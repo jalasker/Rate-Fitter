@@ -13,6 +13,9 @@ import emcee as MC
 import corner
 import scipy.stats.mstats as mstats
 from sys import argv
+import glob
+import time
+import os
 #import inspect
 
 
@@ -158,9 +161,11 @@ class Rate_Fitter:
             ztype = 'SIM_ZCMB'
         else:
             ztype = 'zPHOT'
+
+
         #zTRUEs = self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] > 0.5]['SIM_ZCMB'].astype(float)
         if (fracContamCut > 0.000000001) & (fracContamCut < 1.0):
-            print "BPQWDSF Cutting based on Frac Contam"
+            print " Cutting based on Frac Contam"
             histTot, binsX, binsY = np.histogram2d(self.simcat.Catalog[ztype], self.simcat.Catalog['MURES'], bins = nbins)
             #histIa, binsX, binsY = np.histogram2D(self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] == 1]['zPHOT'], self.simcat.Catalog['MURES'], bins = self.bins)
             histCC, binsX, binsY = np.histogram2d(self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] != 1][ztype], self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] != 1]['MURES'], bins = (binsX, binsY))
@@ -266,16 +271,18 @@ class Rate_Fitter:
         plt.switch_backend('Agg')
 
 
-        nSim, simBins = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins=self.binList)
-        nSim2, simBins2 = np.histogram(self.simcat.Catalog[ztype].astype(float), bins=self.binList)
+        #nSim, simBins = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins=self.binList)
+        #nSim2, simBins2 = np.histogram(self.simcat.Catalog[ztype].astype(float), bins=self.binList)
         
 
-        #nSim, simBins = np.histogram(self.simgencat.Catalog[self.simgencat.Catalog['GENTYPE'] == 1]['GENZ'].astype(float), bins=self.binList)
-        #nSim2, simBins2 = np.histogram(self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] ==1][ztype].astype(float), bins=self.binList)
+        nSim, simBins = np.histogram(self.simgencat.Catalog[self.simgencat.Catalog['GENTYPE'] == 1]['GENZ'].astype(float), bins=self.binList)
+        nSim2, simBins2 = np.histogram(self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] ==1][ztype].astype(float), bins=self.binList)
+        nSim3, simBins3 = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins=self.binList)
+        
 
-        NCC , _ = np.histogram(self.simcat.Catalog[ztype][self.simcat.Catalog['SIM_TYPE_INDEX'] != 1].astype(float), bins=self.binList)
+        NCC , _ = np.histogram(self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] != 1][ztype].astype(float), bins=self.binList)
 
-        FracBad = NCC*1.0/(1.0*nSim2)
+        FracBad = NCC*1.0/(1.0*nSim3)
 
         print "Fraction of CCs in each bin"
         print FracBad
@@ -520,6 +527,7 @@ if __name__ == '__main__':
     NNCut = False
     cheatType = bool(int(argv[6]))
     cheatZ = bool(int(argv[7]))
+    trueBeta = float(argv[8])
     if( ('Combine' in simdir) or ('SALT2' in simdir)) &  (('Combine' in datadir) or ('SALT2' in simdir)):
         NNCut = True
         NNProbCut = 0.5
@@ -575,7 +583,7 @@ if __name__ == '__main__':
     #MURES_Cuts = [2.0]
     #MURES_Cuts = [1.0, 1.5, 2.0, 3.0, 4.0, 99.0, 2.0]
     #for MURES_Cut in MURES_Cuts:
-    fracContamCuts = [-1, 0.5]
+    fracContamCuts = [-1]
     cuts = [('FITPROB', 0.01, np.inf)]
     for fcc in fracContamCuts:
         ks = []
@@ -591,7 +599,7 @@ if __name__ == '__main__':
         nFail = 0
         simLoaded = False
         if '{' in datadir:
-            nfile = 101
+            nfile = 100
         else:
             nfile = 2
         for simInd in xrange(1,nfile):
@@ -695,6 +703,10 @@ if cheatType:
 if cheatZ:
     print "THESE RESULTS Use Simulated Redshift info"
 
+
+
+
+
 #print "MURES CUTS"
 #print MURES_Cuts
 print "Frac Contam Cuts"
@@ -713,6 +725,32 @@ print Chi2Mean
 print "Chi2Sigma"
 print Chi2Sigma
 
+assert(fracContamCuts[0] == -1)
+outfile = dataname
+
+print "outfile Pre Prefix"
+print outfile
+
+if cheatType:
+    outfile = outfile + '_CheatType'
+    if cheatZ:
+        outfile = outfile + 'Z'
+elif cheatZ:
+    outfile = outfile + '_CheatZ'
+
+outfile = outfile + '.txt'
+print "Outfile Name"
+if not(os.path.isfile(outfile)):
+    output = open(outfile, 'w')
+    output.write('#Date DataBeta delta_Beta sigma_Beta meanZ sigmaZ\n')
+else:
+    output = open(outfile, 'a')
+print 'outfile'
+print outfile
+output.write('{0}\t{1:.3f}\t{2:.3f}\t{3:.3f}\t{4:.3f}\t{5:.3f}\n'.format(time.strftime('%b-%d-%H:%M'), trueBeta, BetaMean[0], float(BetaSigma[0])/np.sqrt(len(ks)), np.mean(RateTest.simcat.Catalog['zPHOT']), np.std(RateTest.simcat.Catalog['zPHOT'])))
+print "BetaMean[0]"
+print BetaMean[0]
+print BetaMean
 
 
 '''
