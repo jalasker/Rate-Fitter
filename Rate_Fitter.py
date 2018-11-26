@@ -21,7 +21,7 @@ import os
 
 
 class Rate_Fitter:
-    def __init__(self, realfilename, realName, simfilename, simName, simgenfilename, MCBeta, zmin=0.1, zmax=1.20 , simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95,  Rate_Model = 'powerlaw',  cheatType = False, cheatZ = False, cuts = None):#, M, JDMin = 56535.0, MJDMax = 56716.0):
+    def __init__(self, realfilename, realName, simfilename, simName, simgenfilename, MCBeta, zmin=0.1, zmax=1.20 , simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95,  Rate_Model = 'powerlaw',  cheatType = False, cheatZ = False, cuts = None):
         self.zmin = zmin
         self.zmax = zmax
         self.MCBeta = MCBeta
@@ -29,16 +29,12 @@ class Rate_Fitter:
         self.cheatType = cheatType
         self.cheatZ = cheatZ
         self.cuts = cuts
-        #print "Sim File Name"
-        #print simfilename
-
-        self.simcat = simread.SNANA_Cat(simfilename, simName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95)#, MJDMin = MJDMin, MJDMax = MJDMax )
-        #print self.simcat.Catalog.shape
+        
+        self.simcat = simread.SNANA_Cat(simfilename, simName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95)
         self.simName = simName
-        self.simgencat = simread.SNANA_Cat(simfilename, simName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95)#, MJDMin = MJDMin, MJDMax = MJDMax )
+        self.simgencat = simread.SNANA_Cat(simfilename, simName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95)
         SIMGEN = np.genfromtxt(simgenfilename, dtype=None, names = True, skip_footer=3, skip_header=1, invalid_raise=False)
         SIMGEN = SIMGEN[SIMGEN['GENZ'] != 'GENZ']
-        #SIMGEN = SIMGEN[(SIMGEN['PEAKMJD'].astype(float) > MJDMin) & (SIMGEN['PEAKMJD'].astype(float) < MJDMax)]
         self.simgencat.params = {'flat':True, 'H0': simH0, 'Om0':simOmegaM, 'Ob0': simOb0, 'sigma8': simSigma8, 'ns': simNs}
         self.simgencat.cosmo = Cosmology.setCosmology('simCosmo', self.simcat.params)
         self.simgencat.OrigCatalog = np.copy(SIMGEN)
@@ -46,82 +42,27 @@ class Rate_Fitter:
         self.simgencat.Catalog = self.simgencat.Catalog[self.simgencat.Catalog['GENZ'] != 'GENZ']
         self.simgencat.simname = simName
         self.simgencat.NSN = int(len(self.simgencat.Catalog['GENZ']))
-        ##print self.simgencat.NSN
-        ##print self.simcat.Catalog.shape
+
         print "SIMGEN NUMBER"
         print self.simgencat.NSN
         print "SIMGENCAT FILE"
         print simfilename
-        #plt.figure()
-        #MJDHist, MJDBins = np.histogram(self.simgencat.Catalog['PEAKMJD'].astype(float), bins = 100) #np.linspace(56535.0,  56716.0, 100))
-        #plt.bar((MJDBins[1:] + MJDBins[:-1])/2.0, MJDHist, width = (MJDBins[1:] - MJDBins[:-1]))
-        #plt.savefig('MJD_Sim_Dist.png')
-        #plt.close()
         
-
-        #obsCat = self.simgencat.Catalog[self.simgencat.Catalog['NOBS'].astype(int) > 0.01]
-
-        #plt.figure()
-        #MJDHist, MJDBins = np.histogram(obsCat['PKMJD'].astype(float), bins = 100) #np.linspace(56535.0,  56716.0, 100))
-        #plt.bar((MJDBins[1:] + MJDBins[:-1])/2.0, MJDHist, width = (MJDBins[1:] - MJDBins[:-1]))
-        #plt.savefig('MJD_SimObs_Dist.png')
-        #plt.close()
-        #print 'realfilename'
-        #print realfilename
         self.realName = realName
         self.realcat = simread.SNANA_Cat(realfilename, realName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95 )
-
-        #if (not (NNSimFile is None)) & (not (NNDataFile is None)) & (not (NNProbCut is None)): 
-        #    self.NNSimFile = np.genfromtxt(NNSimFile, names = True, dtype = None, skip_header = 4)
-        #    self.NNDataFile = np.genfromtxt(NNDataFile, names = True, dtype = None, skip_header = 4)
-        #    self.realcat.Catalog = self.realcat.Catalog[self.NNDataFile['NN_PROB_IA'] > NNProbCut]
-        #    self.simcat.Catalog = self.simcat.Catalog[self.NNSimFile['NN_PROB_IA'] > NNProbCut]
-        
-        #if not NNProbCut is None:
-        #    self.realcat.Catalog = self.realcat.Catalog[self.realcat.Catalog['NN_PROB_IA'] > NNProbCut]
-        #    self.simcat.Catalog = self.simcat.Catalog[self.simcat.Catalog['NN_PROB_IA'] > NNProbCut]
-
 
 
         if self.cheatType:
             print "WARNING, THE FITTER IS CHEATING AND ELIMINATED NON-IAs USING SIM INFO"
             self.realcat.Catalog = self.realcat.Catalog[self.realcat.Catalog['SIM_TYPE_INDEX'] == 1]
             self.simcat.Catalog = self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] == 1]
-        print 'N precuts'
-        print self.realcat.Catalog['FITPROB'].shape
+
+
         for cut in cuts:
             self.realcat.Catalog = self.realcat.Catalog[(self.realcat.Catalog[cut[0]] > cut[1]) & (self.realcat.Catalog[cut[0]] < cut[2])]
             self.simcat.Catalog = self.simcat.Catalog[(self.simcat.Catalog[cut[0]] > cut[1]) & (self.simcat.Catalog[cut[0]] < cut[2])]
-        print "Minimum Fitprob"
-        print np.min(self.realcat.Catalog['FITPROB'])
-        print 'N postcuts'
-        print self.realcat.Catalog['FITPROB'].shape
-        #if not(MURES_Cut is None):
-        #    print "NO MORE STRAIGHT MURES CUTS"
-        #    assert(0)
-        '''
-        try:
 
-            #LCDM = cosmo.FlatLambdaCDM(70.0, 0.3)
-            #MuRealModel = LCDM.distmod(self.realcat.Catalog['zPHOT'])
-            #MuSimModel = LCDM.distmod(self.simcat.Catalog['zPHOT'])
-            #alf = 0.146; bet = 3.03; M = -19.3
-            #MuRealObs = self.realcat.Catalog['mB'] + 19.3 + alf*self.realcat.Catalog['x1'] - bet*self.realcat.Catalog['c']
-            #MuSimObs = self.simcat.Catalog['mB'] + 19.3 + alf*self.simcat.Catalog['x1'] - bet*self.simcat.Catalog['c']
-            #self.realcat.Catalog = self.realcat.Catalog[np.abs(MuRealModel - MuRealObs) < MURES_Cut]
-            #self.simcat.Catalog = self.simcat.Catalog[np.abs(MuSimModel - MuSimObs) < MURES_Cut]
-
-            self.realcat.Catalog = self.realcat.Catalog[np.abs(self.realcat.Catalog['MURES']) < MURES_Cut]
-            self.simcat.Catalog = self.simcat.Catalog[np.abs(self.simcat.Catalog['MURES']) < MURES_Cut]
-        except Exception, e: 
-            print self.realcat.Catalog.dtype
-            print "NO HUBBLE RESIDUALS. USE SALT2mu FIRST"
-            print e
-            traceback.print_exc()
-            assert(0)
-        '''
-        #print "REALCAT SHAPE"
-        #print self.realcat.Catalog.shape
+        
         
     def newData(self, realfilename, realName):
         self.realName = realName
@@ -140,22 +81,11 @@ class Rate_Fitter:
         print np.min(self.realcat.Catalog['FITPROB'])
         print 'N postcuts'
         print self.realcat.Catalog['FITPROB'].shape
-        #if not(self.MURES_Cut is None):
-        #    print "NO MORE STRAIGHT MURES CUTS"
-        #    assert(0)
-        '''
-        try:
-            self.realcat.Catalog = self.realcat.Catalog[np.abs(self.realcat.Catalog['MURES']) < MURES_Cut]
-        except Exception, e: 
-            print self.realcat.Catalog.dtype
-            print "NO HUBBLE RESIDUALS. USE SALT2mu FIRST"
-            print e
-            traceback.print_exc()
-            assert(0)
-        '''
+        
     def effCalc(self, fracContamCut = 0.0, nbins = 10):
         #### Do we want SNIas or all SN for efficiency?
         self.nbins = nbins
+        self.typeString = ''
         #zPHOTs = self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] > 0.5]['zHD'].astype(float)
         if self.cheatZ:
             ztype = 'SIM_ZCMB'
@@ -181,11 +111,17 @@ class Rate_Fitter:
                         realInBin = (self.realcat.Catalog[ztype] > binsX[i]) & (self.realcat.Catalog[ztype] < binsX[i+1]) & (self.realcat.Catalog['MURES'] > binsY[j]) & (self.realcat.Catalog['MURES'] < binsY[j+1])
                         self.simcat.Catalog = self.simcat.Catalog[np.invert(simInBin)]
                         self.realcat.Catalog = self.realcat.Catalog[np.invert(realInBin)]
+
+        print "Type Location A"
         
+        self.typeString = self.typeString + 'A1'
+        print "Choice A1"
         zPHOTs = self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] == 1][ztype].astype(float)
 
         zTRUEs = self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] == 1]['SIM_ZCMB'].astype(float)
         '''
+        print "Choice A2"
+        self.typeString = self.typeString + 'A2'
         zPHOTs = self.simcat.Catalog[ztype].astype(float)
 
         zTRUEs = self.simcat.Catalog['SIM_ZCMB'].astype(float)
@@ -198,11 +134,20 @@ class Rate_Fitter:
         self.binList = binList
         counts, zPhotEdges, zTrueEdges, binnumber = scipy.stats.binned_statistic_2d(zPHOTs, zTRUEs, zTRUEs, statistic = 'count', bins =  self.binList)
         assert(zPhotEdges.shape[0] == (self.nbins + 1))
-        #zGenHist, zGenBins = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins = self.binList)
-        #zSim1Hist, zSim1Bins = np.histogram(self.simcat.Catalog['SIM_ZCMB'].astype(float), bins = self.binList)
+
+        print "Type Location B"
         
+        print "Choice B1"
+        self.typeString = self.typeString + 'B1'
         zGenHist, zGenBins = np.histogram(self.simgencat.Catalog[self.simgencat.Catalog['GENTYPE'] == 1]['GENZ'].astype(float), bins = self.binList)
         zSim1Hist, zSim1Bins = np.histogram(self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] ==1]['SIM_ZCMB'].astype(float), bins = self.binList)
+        '''
+        print "Choice B2"
+        self.typeString = self.typeString + 'B2'
+        zGenHist, zGenBins = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins = self.binList)
+        zSim1Hist, zSim1Bins = np.histogram(self.simcat.Catalog['SIM_ZCMB'].astype(float), bins = self.binList)
+        '''
+       
         
 
         print "counts of zTrue in each zPhot vs zTrue bin"
@@ -241,19 +186,19 @@ class Rate_Fitter:
         plt.figure()
         plt.imshow(np.flipud(counts), extent = extent, cmap = 'Blues')
         plt.colorbar()
-        plt.savefig('redshiftDistro.png')
+        plt.savefig(self.realName + 'redshiftDistro.png')
         plt.clf()
         plt.close()
         plt.figure()
         plt.imshow(np.flipud(self.effmat), extent = extent, cmap = 'Blues', norm=mpl.colors.LogNorm())
         plt.colorbar()
-        plt.savefig('efficiencyMatrixLog.png')
+        plt.savefig(self.realName + 'efficiencyMatrixLog.png')
         plt.clf()
         plt.close()
         plt.figure()
         plt.imshow(np.flipud(self.effmat), extent = extent, cmap = 'Blues')
         plt.colorbar()
-        plt.savefig('efficiencyMatrix.png')
+        plt.savefig(self.realName + 'efficiencyMatrix.png')
         plt.clf()
         plt.close()
         print 'effmat'
@@ -270,13 +215,25 @@ class Rate_Fitter:
             ztype = 'zPHOT'
         plt.switch_backend('Agg')
 
-
-        #nSim, simBins = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins=self.binList)
-        #nSim2, simBins2 = np.histogram(self.simcat.Catalog[ztype].astype(float), bins=self.binList)
+        print "Type Location C"
         
-
+        if len(self.typeString) <= 4:
+            self.typeString = self.typeString + 'C1'
+        print "Choice C1"
         nSim, simBins = np.histogram(self.simgencat.Catalog[self.simgencat.Catalog['GENTYPE'] == 1]['GENZ'].astype(float), bins=self.binList)
         nSim2, simBins2 = np.histogram(self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] ==1][ztype].astype(float), bins=self.binList)
+        '''
+
+        print "Choice C2"
+        if len(self.typeString) <= 4:
+            self.typeString = self.typeString + 'C2'
+        
+        nSim, simBins = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins=self.binList)
+        nSim2, simBins2 = np.histogram(self.simcat.Catalog[ztype].astype(float), bins=self.binList)
+        
+        '''
+        
+       
         nSim3, simBins3 = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins=self.binList)
         
 
@@ -461,6 +418,7 @@ class Rate_Fitter:
                 return Chi2Temp
         zCenters = (simBins[1:] + simBins[:-1])/2.0
  
+        #Is this right? Everything else in the other side of the chi2 function should be Ia only
         fnorm = float(np.sum(nData))/float(np.sum(nSim))
         if self.Rate_Model == 'powerlaw':
             lamChi2 = lambda k, Beta: chi2func(nData, nSim, self.effmat, fnorm, zCenters, k, Beta, nCCData = nCCData)
@@ -519,10 +477,14 @@ class Rate_Fitter:
 
 if __name__ == '__main__':
     from sys import argv
+    print "argv"
+    print argv
     datadir = argv[1]
     simdir = argv[2]
     dataname = argv[3]
+    print "dataname"
     simname = argv[4]
+    print simname
     simgenfile = argv[5]
     NNCut = False
     cheatType = bool(int(argv[6]))
@@ -688,13 +650,13 @@ if __name__ == '__main__':
 
         plt.plot(xs, scipy.stats.chi2.pdf(xs, 11)*norm, color = 'g')
         if cheatType and not cheatZ:
-            plt.savefig('Chi2Plot_CheatType.png')
+            plt.savefig(dataname +'Chi2Plot_CheatType.png')
         elif cheatZ and not cheatType:
-            plt.savefig('Chi2Plot_CheatZ.png')
+            plt.savefig(dataname  +'Chi2Plot_CheatZ.png')
         elif cheatZ and cheatType:
-            plt.savefig('Chi2Plot_CheatTypeZ.png')
+            plt.savefig(dataname +'Chi2Plot_CheatTypeZ.png')
         else:
-            plt.savefig('Chi2Plot.png')
+            plt.savefig(dataname +'Chi2Plot.png')
 
 
 
@@ -742,12 +704,31 @@ outfile = outfile + '.txt'
 print "Outfile Name"
 if not(os.path.isfile(outfile)):
     output = open(outfile, 'w')
-    output.write('#Date DataBeta delta_Beta sigma_Beta meanZ sigmaZ\n')
+    output.write('#Date Date/time at which job finished\n')
+    output.write('#DataBeta Input beta for the simulated data sample. Will be 0.0 for real data.\n')
+    output.write('#N_sims Number of datalike sims that go into the subsequent means\n')
+    output.write('#delta_Beta mean difference between large MC sim beta (2.11 for the time being) and the measured beta for the data (not the beta in column 2.\n')
+    output.write('#sigma_Beta std. errooor in the mean of delta_Beta over N_sims sims\n')
+    output.write('#meanZ mean photoZ of the large MC sim\n')
+    output.write('#sigmaZ std. deviation of the photoZs for the large Sim\n')
+    output.write('#sigmaDZ std. deviation of (zSim - zPHOT)\n')
+    output.write('#NCC/NTot overall CC Contamination\n')
+    output.write('#TypeChoice Internal Diagnostic, check code comments\n')
+    output.write('#Date \t\tDataBeta N_sims delta_Beta sigma_Beta meanZ sigmaZ sigmaDz NCC/NTot TypeChoice\n')
 else:
     output = open(outfile, 'a')
 print 'outfile'
 print outfile
-output.write('{0}\t{1:.3f}\t{2:.3f}\t{3:.3f}\t{4:.3f}\t{5:.3f}\n'.format(time.strftime('%b-%d-%H:%M'), trueBeta, BetaMean[0], float(BetaSigma[0])/np.sqrt(len(ks)), np.mean(RateTest.simcat.Catalog['zPHOT']), np.std(RateTest.simcat.Catalog['zPHOT'])))
+
+cat = RateTest.simcat.Catalog
+t = time.strftime('%b-%d-%H:%M')
+N_Sims = len(ks)
+BetaStdErr = float(BetaSigma[0])/np.sqrt(N_Sims)
+meanZ =  np.mean(cat['zPHOT'])
+sigZ = np.std(cat['zPHOT'])
+sigDZ = np.std(cat['zPHOT'] - cat['SIM_ZCMB'])
+contam = np.sum(cat['SIM_TYPE_INDEX'] !=1).astype(float)/ float(cat.shape[0])
+output.write('{0}\t\t{1:.2f}\t{2}\t{3:.3f}\t{4:.3f}\t{5:.3f}\t{6:.3f}\t{7:.3f}\t{8:.3f}\t{9}\n'.format(t, trueBeta, N_Sims, BetaMean[0], BetaStdErr,meanZ, sigZ, sigDZ, contam,  RateTest.typeString))
 print "BetaMean[0]"
 print BetaMean[0]
 print BetaMean
