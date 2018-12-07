@@ -1,0 +1,585 @@
+#!/software/python-2.7-2014q3-el6-x86_64/bin/python
+import SNANA_Reader as simread
+import REAL_Reader as dataread
+import iminuit as iM
+from iminuit import Minuit as M
+import scipy
+import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import Cosmology
+import emcee as MC
+import corner
+import scipy.stats.mstats as mstats
+#import inspect
+def CIC(xs, ys, xLeft, xRight, yLeft, yRight):
+    assert(np.sum(xs < xLeft) == 0)
+    assert(np.sum(xs > xRight) == 0)
+    assert(np.sum(ys < yLeft) == 0)
+    assert(np.sum(ys > yRight) == 0)
+    xCenter = (xLeft + xRight)/2.0
+    yCenter = (yLeft + yRight)/2.0
+    xSize = xRight - xLeft
+    ySize = yRight - yLeft
+    dxs = xs - xCenter; dys = ys - yCenter
+    outputCells = np.zeros((3,3))
+    Q1 = (dxs > 0) & (dys > 0)
+    Q2 = (dxs > 0) & (dys < 0)
+    Q3 = (dxs < 0) & (dys < 0)
+    Q4 = (dxs < 0) & (dys > 0)
+    sx1 = np.abs(dxs); sx2 = xSize - np.abs(dxs)
+    sy1 = np.abs(dys); sy2 = ySize - np.abs(dys)
+    A1 = sx1*sy1; A2 = sx2*sy1; A3 = sx2*sy2; A4 = sx1*sy2
+    outputCells[0][0] =  np.sum(A1 * Q4)
+    outputCells[1][0] =  np.sum(A2 * (Q4 + Q1))
+    outputCells[2][0] =  np.sum(A1 * Q1)
+    outputCells[0][1] =  np.sum(A4 * (Q3 + Q4))
+    outputCells[1][1] =  np.sum(A3)
+    outputCells[2][1] =  np.sum(A2 * (Q1 + Q2))
+    outputCells[0][2] =  np.sum(A1 * Q3)
+    outputCells[1][2] =  np.sum(A2 * (Q2 + Q3))
+    outputCells[2][2] =  np.sum(A1 * Q2)
+    return outputCells/(xSize*ySize)
+
+
+
+class Rate_Fitter:
+    def __init__(self, realfilename, realName, simfilename, simName, simgenfilename, MCBeta, zmin=0.00, zmax=1.20 , simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95, MJDMin = 56535.0, MJDMax = 56716.0):
+        self.zmin = zmin
+        self.zmax = zmax
+        self.MCBeta = MCBeta
+        self.simcat = simread.SNANA_Cat(simfilename, simName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95, MJDMin = MJDMin, MJDMax = MJDMax )
+        self.simName = simName
+        self.simgencat = simread.SNANA_Cat(simfilename, simName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95, MJDMin = MJDMin, MJDMax = MJDMax )
+        SIMGEN = np.genfromtxt(simgenfilename, dtype=None, names = True, skip_footer=3, skip_header=1, invalid_raise=False)
+        SIMGEN = SIMGEN[SIMGEN['GENZ'] != 'GENZ']
+        print SIMGEN.shape
+        #SIMGEN = SIMGEN[(SIMGEN['MJD0'].astype(float) > 56535.0) & (SIMGEN['MJD0'].astype(float) < 56716.0)]
+        SIMGEN = SIMGEN[(SIMGEN['MJD0'].astype(float) > MJDMin) & (SIMGEN['MJD0'].astype(float) < MJDMax)]
+        print SIMGEN.shape
+        self.simgencat.params = {'flat':True, 'H0': simH0, 'Om0':simOmegaM, 'Ob0': simOb0, 'sigma8': simSigma8, 'ns': simNs}
+        self.simgencat.cosmo = Cosmology.setCosmology('simCosmo', self.simcat.params)
+        self.simgencat.OrigCatalog = np.copy(SIMGEN)
+        self.simgencat.Catalog = np.copy(SIMGEN)
+        self.simgencat.Catalog = self.simgencat.Catalog[self.simgencat.Catalog['GENZ'] != 'GENZ']
+        self.simgencat.simname = simName
+        self.simgencat.NSN = int(len(self.simgencat.Catalog['GENZ']))
+        
+        #self.simgencat.SNIA = self.simgencat.Catalog['NON1A_INDEX'].astype(int) < 0.1
+        #self.simgencat.SNCC = self.simgencat.Catalog['NON1A_INDEX'].astype(int) > 0.1
+        #self.simgencat.SNIACat = self.simgencat.Catalog[self.simgencat.SNIA]
+        #self.simgencat.SNCCCat = self.simgencat.Catalog[self.simgencat.SNCC]
+        
+        #self.simgencat.NIA = int(len(self.simgencat.Catalog[self.simgencat.SNIA]['GENZ']))
+        #self.simgencat.NCC = int(len(self.simgencat.Catalog[self.simgencat.SNCC]['GENZ']))
+        #assert(self.simgencat.NSN == (self.simgencat.NIA + self.simgencat.NCC))
+        #for tz in self.simgencat.Catalog['GENZ']:
+        #    try:
+        #        float(tz)
+        #    except:
+        #        print tz
+
+        plt.figure()
+        MJDHist, MJDBins = np.histogram(self.simgencat.Catalog['MJD0'].astype(float), bins = 100) #np.linspace(56535.0,  56716.0, 100))
+        plt.bar((MJDBins[1:] + MJDBins[:-1])/2.0, MJDHist, width = (MJDBins[1:] - MJDBins[:-1]))
+        plt.savefig('MJD_Sim_Dist.png')
+        plt.close()
+        self.realName = realName
+
+        obsCat = self.simgencat.Catalog[self.simgencat.Catalog['NOBS'].astype(int) > 0.01]
+
+        plt.figure()
+        MJDHist, MJDBins = np.histogram(obsCat['MJD0'].astype(float), bins = 100) #np.linspace(56535.0,  56716.0, 100))
+        plt.bar((MJDBins[1:] + MJDBins[:-1])/2.0, MJDHist, width = (MJDBins[1:] - MJDBins[:-1]))
+        plt.savefig('MJD_SimObs_Dist.png')
+        plt.close()
+        '''
+        plt.figure()
+        ZHist, ZBins = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins = (np.linspace(self.zmin, self.zmax, 20)))
+        plt.bar((ZBins[1:] +ZBins[:-1])/2.0, ZHist, width =(ZBins[1:] -ZBins[:-1]) )
+        plt.savefig('zHDgenDistro.png')
+        plt.close()
+        '''
+        ####CHANGE WHEN USING REAL DATA
+        #self.realcat = dataread.REAL_Cat(simfilename, simName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95 )
+        self.realcat = simread.SNANA_Cat(realfilename, simName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95 )
+    def effCalc(self, nbins = 10):
+        #### Do we want SNIas or all SN for efficiency?
+        self.nbins = nbins
+        zPHOTs = self.simcat.Catalog['zHD'].astype(float)
+        #zPHOTs = self.simcat.SNIACat['zHD'].astype(float)
+        #zSPECs = []
+        #cidList = self.simcat.SNIACat['CID'].astype(int)
+        #for cid in cidList:
+            #print cid
+        #    zSPECs.append(float(np.asscalar(self.simgencat.SNIACat['GENZ'][cidList == cid])))
+        #zSPECs = np.array(zSPECs)
+        #zSPECs = self.simcat.SNIACat['zHD'].astype(float)
+        #zSPECs = self.simcat.SNIACat['zHD'].astype(float)
+        zTRUEs = self.simcat.Catalog['SIM_ZCMB'].astype(float)
+        #print zSPECs.shape
+        #print zPHOTs.shape
+        print zPHOTs.shape
+        print zTRUEs.shape
+        '''
+        #binList = np.linspace(self.zmin, self.zmax, self.nbins + 1)
+        binList = [self.zmin]
+        #avgBin = (self.zmax - self.zmin)/self.nbins
+        binShare = (self.zmax - self.zmin - 0.05*(self.nbins))/np.sum(np.arange(1, self.nbins +1, 1)**2)
+        #print binShare
+        #print 0.025*self.nbins
+        #print self.zmin
+        #print self.zmax
+        for i in xrange(1, self.nbins +1):
+            binList.append(binList[i-1] + 0.05 + binShare* i**2)
+        print binList
+        binList = np.array(binList)
+        self.binList = binList
+        '''
+
+        binList = mstats.mquantiles(zPHOTs, np.linspace(0.0, 1.0, nbins + 1), limit = (self.zmin, self.zmax) )
+        print binList
+        self.binList = binList
+        #assert(0)
+
+        counts, zPhotEdges, zTrueEdges, binnumber = scipy.stats.binned_statistic_2d(zPHOTs, zTRUEs, zTRUEs, statistic = 'count', bins =  self.binList)
+        assert(zPhotEdges.shape[0] == (self.nbins + 1))
+        zGenHist, zGenBins = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins = self.binList)
+        self.effmat = np.zeros((self.nbins,self.nbins))
+        xMax = zPhotEdges.shape[0] - 2
+        yMax = zTrueEdges.shape[0] - 2
+        print zGenHist
+        print counts.astype(int)
+
+        #self.effmat = np.identity(nbins)
+        for zPhotLedge, zPhotRedge, row, i in zip(zPhotEdges[:-1], zPhotEdges[1:], counts, xrange(xMax + 1)):
+            zPhotCenter = (zPhotLedge + zPhotRedge)/2.0
+            for zTrueLedge, zTrueRedge, count, j in zip(zTrueEdges[:-1], zTrueEdges[1:], row, xrange(yMax + 1)):
+                zTrueCenter = (zTrueLedge + zTrueRedge)/2.0
+                inCell = (zPHOTs > zPhotLedge) & (zPHOTs < zPhotRedge) & (zTRUEs > zTrueLedge)& (zTRUEs < zTrueRedge)
+                zPhotCell = zPHOTs[inCell];zTrueCell = zTRUEs[inCell]
+                self.effmat[i][j] = np.sum(inCell)
+                assert(np.abs(np.sum(inCell) - count < 2))
+                #ztable.write('{:>.4f}\t{:>.4f}\t{:>d}\n'.format(zPhotCenter, zTrueCenter, int(count)))
+                '''
+                effMatTemp = CIC(zPhotCell, zTrueCell, zPhotLedge, zPhotRedge, zTrueLedge, zTrueRedge)
+                if i == 0:
+                    if j == 0:
+                        self.effmat[0][0] += effMatTemp[0][0] + effMatTemp[0][1] + effMatTemp[1][0] + effMatTemp[1][1]
+                        self.effmat[0][1] += effMatTemp[2][0] + effMatTemp[2][1]
+                        self.effmat[1][0] += effMatTemp[0][2] + effMatTemp[1][2]
+                        self.effmat[1][1] += effMatTemp[2][2]
+                    elif j != (yMax):
+                        for n in xrange(3):
+                            try:
+                                self.effmat[0][j+n-1] += effMatTemp[0][n] + effMatTemp[1][n]
+                                self.effmat[1][j+n-1] += effMatTemp[2][n]
+                            except:
+                                print j
+                                print n
+                                print self.effmat.shape
+                                assert(0)
+                    else:
+                        self.effmat[0][yMax-1] += effMatTemp[0][0] + effMatTemp[1][0]
+                        self.effmat[0][yMax] += effMatTemp[0][1] + effMatTemp[0][2] + effMatTemp[1][1] + effMatTemp[1][2]
+                        self.effmat[1][yMax-1] += effMatTemp[2][0]
+                        self.effmat[1][yMax] += effMatTemp[2][1] + effMatTemp[2][2]
+                elif j == 0:
+                    if i != (xMax):
+                        for m in xrange(3):
+                            self.effmat[i+m-1][0] += effMatTemp[m][0] + effMatTemp[m][1]
+                            self.effmat[i+m-1][1] += effMatTemp[m][2]
+                    else:
+                        self.effmat[xMax-1][0] += effMatTemp[0][0] + effMatTemp[0][1]
+                        self.effmat[xMax][0] += effMatTemp[1][0] + effMatTemp[1][1] + effMatTemp[2][0] + effMatTemp[2][1] 
+                        self.effmat[xMax-1][1] += effMatTemp[0][2]
+                        self.effmat[xMax][1] += effMatTemp[1][2] + effMatTemp[2][2]
+                elif i == xMax:
+                    if j != yMax:
+                        for n in xrange(3):
+                            self.effmat[xMax - 1][j+n-1] += effMatTemp[0][n] 
+                            self.effmat[xMax][j+n-1] += effMatTemp[1][n] + effMatTemp[2][n]
+                        else:
+                           self.effmat[xMax-1][yMax-1] += effMatTemp[0][0]
+                           self.effmat[xMax-1][yMax] += effMatTemp[0][1] + effMatTemp[0][2]
+                           self.effmat[xMax][yMax -1] += effMatTemp[1][0] + effMatTemp[2][0]
+                           self.effmat[xMax][yMax] += effMatTemp[1][1] + effMatTemp[1][2] + effMatTemp[2][1] + effMatTemp[2][2]
+                elif j == yMax:
+                    for m in xrange(3):
+                        self.effmat[i+m-1][xMax - 1] += effMatTemp[m][0] 
+                        self.effmat[i+m-1][xMax] += effMatTemp[m][1] + effMatTemp[m][2]
+                else:
+                    for m in xrange(3):
+                        for n in xrange(3):
+                            self.effmat[i+m-1][j+n-1] += effMatTemp[m][n]
+                '''
+        for row, i in zip(self.effmat, xrange(self.effmat.shape[0])):
+            #rowsum = np.sum(row)
+            for j in xrange(row.shape[0]):
+                self.effmat[i][j] /= zGenHist[j]
+
+        #print np.sum((self.effmat < 0.0))
+
+        extent = [zPhotEdges[0], zPhotEdges[-1], zTrueEdges[0], zTrueEdges[-1]]
+        #print extent
+        #np.set_printoptions(threshold=np.nan)
+        #print counts
+        #np.set_printoptions(threshold=10)
+        plt.hold(False)
+        plt.figure()
+        plt.imshow(np.flipud(counts), extent = extent, cmap = 'Blues')
+        plt.colorbar()
+        plt.savefig('redshiftDistro.png')
+        plt.close()
+        plt.hold(False)
+        plt.figure()
+        plt.imshow(np.flipud(self.effmat), extent = extent, cmap = 'Blues', norm=mpl.colors.LogNorm())
+        plt.colorbar()
+        plt.savefig('efficiencyMatrixLog.png')
+        plt.close()
+        plt.hold(False)
+        plt.figure()
+        plt.imshow(np.flipud(self.effmat), extent = extent, cmap = 'Blues')
+        plt.colorbar()
+        plt.savefig('efficiencyMatrix.png')
+        plt.close()
+
+    def fit_rate(self):
+        nSim, simBins = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins=self.binList)
+        #### CHANGE WHEN USED WITH REAL DATA
+        #bins, nSim = np.histogram(self.realcat., bins=np.linspace(self.zmin, self.zmax, self.nbins)) 
+        #nData, dataBins = np.histogram(self.realcat.Catalog['zPHOT'].astype(float), bins=np.linspace(self.zmin, self.zmax, self.nbins + 1))
+        nData, dataBins = np.histogram(self.realcat.Catalog['zHD'].astype(float), bins=self.binList)
+        print nData
+        print dataBins
+        #def chi2func(nData, nSim, effmat, fnorm, f_0,f_1,f_2,f_3,f_4,f_5,f_6,f_7,f_8,f_9):\
+        def chi2func(nData, nSim, effmat, fnorm, zCenters, k, Beta):
+            #, f_10,f_11,f_12,f_13,f_14,f_15,f_16,f_17,f_18,f_19):
+            #def chi2func(nData, nSim, effmat, fnorm, f_0,f_1,f_2,f_3,f_4,f_5,f_6,f_7,f_8,f_9):
+            #def chi2func(nData, nSim, effmat, fnorm, zCenters, R0, Beta):
+            Chi2Temp = 0.0
+            #f_Js = np.array([f_0,f_1,f_2,f_3,f_4,f_5,f_6,f_7,f_8,f_9])
+            #f_Js = np.array([f_0,f_1,f_2,f_3,f_4,f_5,f_6,f_7,f_8,f_9, f_10,f_11,f_12,f_13,f_14,f_15,f_16,f_17,f_18,f_19])
+            f_Js = k*(1+zCenters)**Beta
+            chi2Mat = np.zeros((self.nbins))
+            adjNMC = np.zeros((self.nbins))
+            #print f_Js
+            #Check if I am scaling errors down with increasing MC size. Make MC twice as large as "Data" to test.
+            for row, nDataI, i in zip(effmat, nData, xrange(self.nbins)):
+                #print 'i = {0}'.format(i)
+                #print nDataI
+                JSumTemp = 0.0
+                for eff, nSimJ, f_J, j in zip(row, nSim, f_Js, xrange(self.nbins)):
+                    #print 'j = {0}'.format(j)
+                    JSumTemp += nSimJ*f_J*eff*fnorm
+                    #print nSimJ*f_J*eff*fnorm
+                    #adjNMC[i] += nSimJ*f_J*eff*fnorm
+                    
+                #print JSumTemp
+                if nDataI > 1E-11 or JSumTemp > 1E-11:
+                    
+                    #Chi2Temp += ((nDataI - JSumTemp)**2/(nDataI + JSumTemp))
+                    Chi2Temp += ((nDataI - JSumTemp)**2/(nDataI + JSumTemp))#*fnorm**2
+                    #print ((nDataI - JSumTemp)**2/(nDataI + JSumTemp))
+                    #chi2Mat[i] += ((nDataI - JSumTemp)**2/(nDataI + JSumTemp*fnorm**2))
+            #print Chi2Temp
+            return Chi2Temp
+        
+        fnorm = float(np.sum(nData))/float(self.simcat.Catalog['zPHOT'].shape[0])
+        print "efficiency for object in zTrue bin to be detected"
+        print np.sum(self.effmat, axis = 0)
+        #print "efficiency for object in zPhot bin to be detected"
+        #print np.sum(self.effmat, axis = 1)
+        print self.effmat
+        print "fnorm"
+        print fnorm
+        zCenters = (simBins[1:] + simBins[:-1])/2.0
+        #lamChi2 = lambda  f_0 , f_1 , f_2 , f_3 , f_4 , f_5 , f_6 , f_7 , f_8 , f_9  : chi2func(nData, nSim, self.effmat, fnorm, f_0,f_1,f_2,f_3,f_4,f_5,f_6,f_7,f_8,f_9)
+        lamChi2 = lambda k, Beta: chi2func(nData, nSim, self.effmat, fnorm, zCenters, k, Beta)
+
+        print "Chi2 init = {0}".format(round(lamChi2(1.0, 0.0), 4))
+        #lamChi2 = lambda  f_0 , f_1 , f_2 , f_3 , f_4 , f_5 , f_6 , f_7 , f_8 , f_9, f_10,f_11,f_12,f_13,f_14,f_15,f_16,f_17,f_18,f_19  : chi2func(nData, nSim, self.effmat, fnorm, f_0,f_1,f_2,f_3,f_4,f_5,f_6,f_7,f_8,f_9, f_10,f_11,f_12,f_13,f_14,f_15,f_16,f_17,f_18,f_19)
+
+        #MinObj = M(lamChi2,f_0 = 1.0, error_f_0 = 5E-2, limit_f_0 = (0.0, None),f_1 = 1.0, error_f_1 = 5E-2, limit_f_1 = (0.0, None),f_2 = 1.0, error_f_2 = 5E-2, limit_f_2 = (0.0, None),f_3 = 1.0, error_f_3 = 5E-2, limit_f_3 = (0.0, None),f_4 = 1.0, error_f_4 = 5E-2, limit_f_4 = (0.0, None),f_5 = 1.0, error_f_5 = 5E-2, limit_f_5 = (0.0, None),f_6 = 1.0, error_f_6 = 5E-2, limit_f_6 = (0.0, None),f_7 = 1.0, error_f_7 = 5E-2, limit_f_7 = (0.0, None),f_8 = 1.0, error_f_8 = 5E-2, limit_f_8 = (0.0, None),f_9 = 1.0, error_f_9 = 5E-2, limit_f_9 = (0.0, None))
+        MinObj = M(lamChi2, k = 1.0, error_k = 0.1, Beta = 0.0, error_Beta = 0.1)
+
+        #MinObj = M(lamChi2,f_0 = 1.0, error_f_0 = 5E-2, limit_f_0 = (0.0, None),f_1 = 1.0, error_f_1 = 5E-2, limit_f_1 = (0.0, None),f_2 = 1.0, error_f_2 = 5E-2, limit_f_2 = (0.0, None),f_3 = 1.0, error_f_3 = 5E-2, limit_f_3 = (0.0, None),f_4 = 1.0, error_f_4 = 5E-2, limit_f_4 = (0.0, None),f_5 = 1.0, error_f_5 = 5E-2, limit_f_5 = (0.0, None),f_6 = 1.0, error_f_6 = 5E-2, limit_f_6 = (0.0, None),f_7 = 1.0, error_f_7 = 5E-2, limit_f_7 = (0.0, None),f_8 = 1.0, error_f_8 = 5E-2, limit_f_8 = (0.0, None),f_9 = 1.0, error_f_9 = 5E-2, limit_f_9 = (0.0, None),f_10 = 1.0, error_f_10 = 5E-2, limit_f_10 = (0.0, None),f_11 = 1.0, error_f_11 = 5E-2, limit_f_11 = (0.0, None),f_12 = 1.0, error_f_12 = 5E-2, limit_f_12 = (0.0, None),f_13 = 1.0, error_f_13 = 5E-2, limit_f_13 = (0.0, None),f_14 = 1.0, error_f_14 = 5E-2, limit_f_14 = (0.0, None),f_15 = 1.0, error_f_15 = 5E-2, limit_f_15 = (0.0, None),f_16 = 1.0, error_f_16 = 5E-2, limit_f_16 = (0.0, None),f_17 = 1.0, error_f_17 = 5E-2, limit_f_17 = (0.0, None),f_18 = 1.0, error_f_18 = 5E-2, limit_f_18 = (0.0, None),f_19 = 1.0, error_f_19 = 5E-2, limit_f_19 = (0.0, None))
+        
+        #lamChi2 = lambda  R0, Beta  : chi2func(nData, nSim, self.effmat, fnorm, zCenters, R0, Beta)
+        #MinObj = M(lamChi2, R0 = 1.0, error_R0 = 0.5, Beta = 0.0, error_Beta = 0.5)
+        MinObj.set_strategy(2)
+        MinObj.migrad()
+        #MinObj.minos()
+        zCenters = (simBins[1:] + simBins[:-1])/2.0
+        #fJs =  []
+        #fJerrs = []
+        #keys = ['f_0', 'f_1', 'f_2','f_3', 'f_4', 'f_5','f_6', 'f_7', 'f_8','f_9']
+        #keys = ['f_0', 'f_1', 'f_2','f_3', 'f_4', 'f_5','f_6', 'f_7', 'f_8','f_9','f_10', 'f_11', 'f_12','f_13', 'f_14', 'f_15','f_16', 'f_17', 'f_18','f_19' ]
+        #for key in keys:
+        #    fJs.append(MinObj.values[key])
+        #    fJerrs.append(MinObj.errors[key])
+
+
+        #def rateParametrization(zCenters, fJs, fJerrs, k, Beta ):
+        #    return np.sum((fJs - k*(1+zCenters)**(Beta + self.MCBeta) )**2/np.array(fJerrs)) 
+
+        #lamRP = lambda k, Beta: rateParametrization(zCenters, fJs, fJerrs, k, Beta)
+        '''
+        print 'Chi2 k = 1.0, Beta = 0.0, 0.5, 1.0, 1.5, -0.5, -1.0, -1.5'
+
+        print lamRP(1.0, 0.0)
+        print lamRP(1.0, 0.5)
+        print lamRP(1.0, 1.0)
+        print lamRP(1.0, 1.5)
+        print lamRP(1.0, -0.5)
+        print lamRP(1.0, -1.0)
+        print lamRP(1.0, -1.5)
+
+        print 'Chi2 k = 0.5, Beta = 0.0, 0.5, 1.0, 1.5, -0.5, -1.0, -1.5'
+
+        print lamRP(0.5, 0.0)
+        print lamRP(0.5, 0.5)
+        print lamRP(0.5, 1.0)
+        print lamRP(0.5, 1.5)
+        print lamRP(0.5, -0.5)
+        print lamRP(0.5, -1.0)
+        print lamRP(0.5, -1.5)
+
+        print 'Chi2 k = 1.5, Beta = 0.0, 0.5, 1.0, 1.5, -0.5, -1.0, -1.5'
+
+        print lamRP(1.5, 0.0)
+        print lamRP(1.5, 0.5)
+        print lamRP(1.5, 1.0)
+        print lamRP(1.5, 1.5)
+        print lamRP(1.5, -0.5)
+        print lamRP(1.5, -1.0)
+        print lamRP(1.5, -1.5)
+
+        RateObj = M(lamRP, k = 1.0, error_k = np.average(fJerrs), Beta = 0.0, error_Beta = 0.1, limit_k = (0.0, None))
+        RateObj.set_strategy(2)
+        RateObj.migrad()
+        RateObj.minos()
+
+        k = RateObj.values['k']
+        Beta = RateObj.values['Beta']
+        BetaErr = RateObj.errors['Beta']
+        '''
+        k = MinObj.values['k']
+        Beta = MinObj.values['Beta']
+        BetaErr = MinObj.errors['Beta']
+        fJs = np.ones(zCenters.shape)
+        xgrid,ygrid, sigma, rawdata = MinObj.mncontour_grid('k', 'Beta', numpoints=400, sigma_res = 4, nsigma = 2.0)
+        plt.figure()
+        plt.hold(False)
+        CS = plt.contour(xgrid, ygrid + self.MCBeta, sigma, levels = [0.5, 1.0, 1.5, 2.0])
+        plt.hold(True)
+        #plt.axhline(y = self.MCBeta, c = 'k', label = 'True Beta')
+        #plt.axhline(y = Beta + self.MCBeta, c = 'g', label= 'Best Fit Beta')
+        #plt.axvline(x = k, label = 'Best Fit k')
+        plt.clabel(CS, fontsize=7, inline=1)
+        plt.xlabel('k')
+        plt.ylabel('Beta')
+        plt.savefig('{0}_{1}_k_beta_contour.png'.format(self.realName, self.simName))
+
+        #plt.figure()
+        #plt.hold(True)
+        #plt.title('True Beta = {0}'.format())
+        #plt.errorbar(zCenters, fJs, yerr = fJerrs, c = 'k', label = 'fJs')
+        #plt.plot(zCenters, k * (1+zCenters)**(Beta + self.MCBeta), c = 'g', label = 'best fit beta = {0}'.format(round(Beta + self.MCBeta, 4)))
+        #testZ = np.linspace(0.0, np.min(zCenters), 10)
+        #testZ = np.hstack((testZ, zCenters))
+        #plt.plot(testZ, k * (1+testZ)**(Beta+ self.MCBeta +BetaErr), c = 'b', label = 'beta + 1 sigma = {0}'.format(round(Beta+ self.MCBeta + BetaErr, 4)))
+        #plt.plot(testZ, k * (1+testZ)**(Beta+ self.MCBeta -BetaErr), c = 'b', label = 'beta - 1 sigma = {0}'.format(round(Beta+ self.MCBeta - BetaErr, 4)))
+        #plt.legend()
+        #plt.savefig('{0}_{1}_FJ_and_fit.png'.format(self.realName, self.simName))
+        #plt.close()
+        plt.hold(False)
+if __name__ == '__main__':
+
+    #RateTest = Rate_Fitter('DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'DES_FULLSURVEY_TEST_IaOnly', 'JLDESMCIaOnlyFlatRate5E-4zPHOTsmearC11/JLMCIaOnlyFlatRate5E-4+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'SHOULDNOTBEWRITINGTHISNOW','JLDESMCIaOnlyFlatRate5E-4zPHOTsmearC11/JLMCIaOnlyFlatRate5E-4+zPHOT+smearC11/SIMGEN.DAT')
+    #'DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'DES_FULLSURVEY_TEST_IaOnly',
+    #RateTest = Rate_Fitter( 'JLDES_R0_7E-5_Beta_1-5/JLDES_R0_7E-5_Beta_1-5/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5','JLDES_R0_7E-5_Beta_1-5/JLDES_R0_7E-5_Beta_1-5/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5','JLDES_R0_7E-5_Beta_1-5/JLDES_R0_7E-5_Beta_1-5/SIMGEN.DAT')
+
+    #RateTest.effCalc(nbins = 10)
+
+    #RateTest.fit_rate()
+
+    #RateTest = Rate_Fitter( 'JLDES_R0_7E-5_Beta_1-5_TESTShallow/JLDES_R0_7E-5_Beta_1-5_TESTShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_TESTShallow','JLDES_R0_7E-5_Beta_1-5_TESTShallow/JLDES_R0_7E-5_Beta_1-5_TESTShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_TESTShallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_TESTShallow/JLDES_R0_7E-5_Beta_1-5_TESTShallow.DUMP')
+
+    print "Pseudo-real Data"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.5; Data Beta = 1.5"
+    #RateTest = Rate_Fitter('DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'JLDESFULLSURVEYIaOnly+zPHOT+smearC11','JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow.DUMP')
+
+    RateTest = Rate_Fitter('/project/rkessler/jlasker/Classification/SimZPHOT/JLDES_R0_2-6E-5_Beta_1-5_Datalike_PhotoZ/JLDES_R0_2-6E-5_Beta_1-5_DataLike-01/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_DataLikePhotZ-01','/project/rkessler/jlasker/Classification/SimZPHOT/JLDES_R0_2-6E-5_Beta_1-5_PhotoZ/JLDES_R0_2-6E-5_Beta_1-5-01/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-5_Perfect_DataLike-01/JLDES_R0_2-6E-5_Beta_1-5_Perfect_DataLike-01.DUMP', 1.5, zmin = 0.2, zmax = 1.2 , MJDMin = 0, MJDMax = np.inf)
+
+
+    RateTest.effCalc(nbins = 10)
+    #RateTest.effCalc(nbins = 20)
+    RateTest.fit_rate()
+
+    print "Pseudo-real Data"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.5; Data Beta = 1.5"
+    #RateTest = Rate_Fitter('DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'JLDESFULLSURVEYIaOnly+zPHOT+smearC11','JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow.DUMP')
+
+    RateTest = Rate_Fitter('/project/rkessler/jlasker/Classification/SimZPHOT/JLDES_R0_2-6E-5_Beta_1-5_Datalike_PhotoZ/JLDES_R0_2-6E-5_Beta_1-5_DataLike-02/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_DataLikePhotZ-02','/project/rkessler/jlasker/Classification/SimZPHOT/JLDES_R0_2-6E-5_Beta_1-5_PhotoZ/JLDES_R0_2-6E-5_Beta_1-5-02/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-5_Perfect_DataLike-02/JLDES_R0_2-6E-5_Beta_1-5_Perfect_DataLike-02.DUMP', 1.5, zmin = 0.2, zmax = 1.2 , MJDMin = 0, MJDMax = np.inf)
+
+    RateTest.effCalc(nbins = 10)
+    #RateTest.effCalc(nbins = 20)
+    RateTest.fit_rate()
+
+
+    print "Pseudo-real Data"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.5; Data Beta = 1.5"
+    #RateTest = Rate_Fitter('DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'JLDESFULLSURVEYIaOnly+zPHOT+smearC11','JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow.DUMP')
+
+    RateTest = Rate_Fitter('/project/rkessler/jlasker/Classification/SimZPHOT/JLDES_R0_2-6E-5_Beta_1-5_Datalike_PhotoZ/JLDES_R0_2-6E-5_Beta_1-5_DataLike-03/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_DataLikePhotZ-03','/project/rkessler/jlasker/Classification/SimZPHOT/JLDES_R0_2-6E-5_Beta_1-5_PhotoZ/JLDES_R0_2-6E-5_Beta_1-5-03/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-5_Perfect_DataLike-03/JLDES_R0_2-6E-5_Beta_1-5_Perfect_DataLike-03.DUMP', 1.5, zmin = 0.2, zmax = 1.2 , MJDMin = 0, MJDMax = np.inf)
+
+    RateTest.effCalc(nbins = 10)
+    #RateTest.effCalc(nbins = 20)
+    RateTest.fit_rate()
+
+    print "Pseudo-real Data"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.5; Data Beta = 1.5"
+    #RateTest = Rate_Fitter('DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'JLDESFULLSURVEYIaOnly+zPHOT+smearC11','JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow.DUMP')
+
+    RateTest = Rate_Fitter('/project/rkessler/jlasker/Classification/SimZPHOT/JLDES_R0_2-6E-5_Beta_1-5_Datalike_PhotoZ/JLDES_R0_2-6E-5_Beta_1-5_DataLike-04/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_DataLikePhotZ-04','/project/rkessler/jlasker/Classification/SimZPHOT/JLDES_R0_2-6E-5_Beta_1-5_PhotoZ/JLDES_R0_2-6E-5_Beta_1-5-04/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-5_Perfect_DataLike-04/JLDES_R0_2-6E-5_Beta_1-5_Perfect_DataLike-04.DUMP', 1.5, zmin = 0.2, zmax = 1.2 , MJDMin = 0, MJDMax = np.inf)
+
+
+    
+    print "Pseudo-real Data"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.5; Data Beta = 1.5"
+    #RateTest = Rate_Fitter('DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'JLDESFULLSURVEYIaOnly+zPHOT+smearC11','JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow.DUMP')
+
+
+    RateTest = Rate_Fitter('/project/rkessler/jlasker/Classification/SimZPHOT/JLDES_R0_2-6E-5_Beta_1-5_Datalike_PhotoZ/JLDES_R0_2-6E-5_Beta_1-5_DataLike-05/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_DataLikePhotZ-05','/project/rkessler/jlasker/Classification/SimZPHOT/JLDES_R0_2-6E-5_Beta_1-5_PhotoZ/JLDES_R0_2-6E-5_Beta_1-5-05/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-5_Perfect_DataLike-05/JLDES_R0_2-6E-5_Beta_1-5_Perfect_DataLike-05.DUMP', 1.5, zmin = 0.2, zmax = 1.2 , MJDMin = 0, MJDMax = np.inf)
+
+    RateTest.effCalc(nbins = 10)
+    #RateTest.effCalc(nbins = 20)
+    RateTest.fit_rate()
+    assert(0)
+
+
+    print "Pseudo-real Data"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.5; Data Beta = 1.5"
+    #RateTest = Rate_Fitter('DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'JLDESFULLSURVEYIaOnly+zPHOT+smearC11','JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_Shallow.DUMP')
+
+    RateTest = Rate_Fitter('JLDES_R0_2-6E-5_Beta_1-5_Shallow_DataLikePhotZ/JLDES_R0_2-6E-5_Beta_1-5_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_Shallow_DataLikePhotZ','JLDES_R0_2-6E-5_Beta_1-5_Shallow_PhotZ/JLDES_R0_2-6E-5_Beta_1-5_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-5_Shallow/JLDES_R0_2-6E-5_Beta_1-5_Shallow.DUMP', 1.5, zmin = 0.2, zmax = 1.2 , MJDMin = 56600.0, MJDMax = 56650.0)
+
+
+    RateTest.effCalc(nbins = 10)
+    #RateTest.effCalc(nbins = 20)
+    RateTest.fit_rate()
+    assert(0)
+    print "Perfect Sim"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.5; Data Beta = 1.5"
+    #RateTest2 = Rate_Fitter( 'DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'JLDESFULLSURVEYIaOnly+zPHOT+smearC11','JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_PerfectShallow/JLDES_R0_7E-5_Beta_1-5_PerfectShallow.DUMP')
+    
+    RateTest2 = Rate_Fitter( 'JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow_DataLikePhotZ/JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow_PhotZ','JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow_PhotZ/JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow/JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow.DUMP', 1.5, zmin = 0.2, zmax = 1.2,  MJDMin = 56600.0, MJDMax = 56650.0)
+
+    RateTest2.effCalc(nbins = 10)
+    #RateTest2.effCalc(nbins = 20)
+
+    RateTest2.fit_rate()
+    
+    print "Pseudo-real Data"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.0; Data Beta = 1.0"
+    RateTest3 = Rate_Fitter('JLDES_R0_2-6E-5_Beta_1-0_Shallow_DataLikePhotZ/JLDES_R0_2-6E-5_Beta_1-0_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-0_Shallow_DataLikePhotZ','JLDES_R0_2-6E-5_Beta_1-0_Shallow_PhotZ/JLDES_R0_2-6E-5_Beta_1-0_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-0_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-0_Shallow/JLDES_R0_2-6E-5_Beta_1-0_Shallow.DUMP', 1.0, zmin = 0.2, zmax = 1.2 , MJDMin = 56600.0, MJDMax = 56650.0)
+
+
+    RateTest3.effCalc(nbins = 10)
+    #RateTest3.effCalc(nbins = 20)
+
+    RateTest3.fit_rate()
+    #assert(0)
+    print "Perfect Sim"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.0; Data Beta = 1.0"
+    #RateTest2 = Rate_Fitter( 'DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'JLDESFULLSURVEYIaOnly+zPHOT+smearC11','JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_PerfectShallow/JLDES_R0_7E-5_Beta_1-5_PerfectShallow.DUMP')
+
+    RateTest4 = Rate_Fitter( 'JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow_DataLikePhotZ/JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow_PhotZ','JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow_PhotZ/JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-0_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow/JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow.DUMP', 1.0, zmin = 0.2, zmax = 1.2,  MJDMin = 56600.0, MJDMax = 56650.0)
+
+    RateTest4.effCalc(nbins = 10)
+    #RateTest4.effCalc(nbins = 20)
+
+    RateTest4.fit_rate()
+
+
+    print "Pseudo-real Data"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.5; Data Beta = 1.0"
+    RateTest5 = Rate_Fitter('JLDES_R0_2-6E-5_Beta_1-0_Shallow_DataLikePhotZ/JLDES_R0_2-6E-5_Beta_1-0_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-0_Shallow_DataLikePhotZ','JLDES_R0_2-6E-5_Beta_1-5_Shallow_PhotZ/JLDES_R0_2-6E-5_Beta_1-5_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-5_Shallow/JLDES_R0_2-6E-5_Beta_1-5_Shallow.DUMP', 1.5, zmin = 0.2, zmax = 1.2 , MJDMin = 56600.0, MJDMax = 56650.0)
+
+
+    RateTest5.effCalc(nbins = 10)
+
+    #RateTest5.effCalc(nbins = 20)
+
+    RateTest5.fit_rate()
+    #assert(0)
+    print "Perfect Sim"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.5; Data Beta = 1.0"
+    #RateTest2 = Rate_Fitter( 'DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'JLDESFULLSURVEYIaOnly+zPHOT+smearC11','JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_PerfectShallow/JLDES_R0_7E-5_Beta_1-5_PerfectShallow.DUMP')
+
+    RateTest6 = Rate_Fitter( 'JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow_DataLikePhotZ/JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow_PhotZ','JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow_PhotZ/JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow/JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow.DUMP', 1.5, zmin = 0.2, zmax = 1.2,  MJDMin = 56600.0, MJDMax = 56650.0)
+
+    RateTest6.effCalc(nbins = 10)
+    #RateTest6.effCalc(nbins = 20)
+
+    RateTest6.fit_rate()
+
+
+    print "Pseudo-real Data"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.0; Data Beta = 1.5"
+    RateTest7 = Rate_Fitter('JLDES_R0_2-6E-5_Beta_1-5_Shallow_DataLikePhotZ/JLDES_R0_2-6E-5_Beta_1-5_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_Shallow_DataLikePhotZ','JLDES_R0_2-6E-5_Beta_1-0_Shallow_PhotZ/JLDES_R0_2-6E-5_Beta_1-0_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-0_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-0_Shallow/JLDES_R0_2-6E-5_Beta_1-0_Shallow.DUMP', 1.0, zmin = 0.2, zmax = 1.2 , MJDMin = 56600.0, MJDMax = 56650.0)
+
+
+    RateTest7.effCalc(nbins = 10)
+    #RateTest7.effCalc(nbins = 20)
+
+    RateTest7.fit_rate()
+    #assert(0)
+    print "Perfect Sim"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 1.0; Data Beta = 1.5"
+    #RateTest2 = Rate_Fitter( 'DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'JLDESFULLSURVEYIaOnly+zPHOT+smearC11','JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_PerfectShallow/JLDES_R0_7E-5_Beta_1-5_PerfectShallow.DUMP')
+
+    RateTest8 = Rate_Fitter( 'JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow_DataLikePhotZ/JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow_PhotZ','JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow_PhotZ/JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-0_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow/JLDES_R0_2-6E-5_Beta_1-0_PerfectShallow.DUMP', 1.0, zmin = 0.2, zmax = 1.2,  MJDMin = 56600.0, MJDMax = 56650.0)
+
+    RateTest8.effCalc(nbins = 10)
+    #RateTest8.effCalc(nbins = 20)
+
+    RateTest8.fit_rate()
+
+
+    print "Pseudo-real Data"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 0.0; Data Beta = 1.5"
+    RateTest9 = Rate_Fitter('JLDES_R0_2-6E-5_Const_Shallow_DataLikePhotZ/JLDES_R0_2-6E-5_Const_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Const_Shallow_DataLikePhotZ','JLDES_R0_2-6E-5_Beta_1-5_Shallow_PhotZ/JLDES_R0_2-6E-5_Beta_1-5_Shallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-5_Shallow/JLDES_R0_2-6E-5_Beta_1-5_Shallow.DUMP', 1.5, zmin = 0.2, zmax = 1.2 , MJDMin = 56600.0, MJDMax = 56650.0)
+
+
+    RateTest9.effCalc(nbins = 10)
+    #RateTest9.effCalc(nbins = 20)
+
+    RateTest9.fit_rate()
+    #assert(0)
+    print "Perfect Sim"
+    print "Sim R0 = 2.6E-5; Data R0 = 2.6E-5"
+    print "Sim Beta = 0.0; Data Beta = 1.5"
+    #RateTest2 = Rate_Fitter( 'DES_FULLSURVEY_TEST/JLDESFULLSURVEYIaOnly+zPHOT+smearC11/FITOPT000+SALT2mu.FITRES', 'JLDESFULLSURVEYIaOnly+zPHOT+smearC11','JLDES_R0_7E-5_Beta_1-5_Shallow/JLDES_R0_7E-5_Beta_1-5_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_7E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_7E-5_Beta_1-5_PerfectShallow/JLDES_R0_7E-5_Beta_1-5_PerfectShallow.DUMP')
+
+    RateTest10 = Rate_Fitter( 'JLDES_R0_2-6E-5_Const_PerfectShallow_DataLikePhotZ/JLDES_R0_2-6E-5_Const_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Const_PerfectShallow_PhotZ','JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow_PhotZ/JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow/FITOPT000+SALT2mu.FITRES', 'JLDES_R0_2-6E-5_Beta_1-5_Shallow','/project/rkessler/SN/SNDATA_ROOT/SIM/JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow/JLDES_R0_2-6E-5_Beta_1-5_PerfectShallow.DUMP', 1.5, zmin = 0.2, zmax = 1.2,  MJDMin = 56600.0, MJDMax = 56650.0)
+
+    RateTest10.effCalc(nbins = 10)
+    #RateTest10.effCalc(nbins = 20)
+
+    RateTest10.fit_rate()
