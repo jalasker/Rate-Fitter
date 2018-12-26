@@ -3,27 +3,29 @@
 #SBATCH --output=DiagFiles/RateFitter%a.out
 #SBATCH --error=DiagFiles/RateFitter%a.out
 #SBATCH --time=12:00:00
-#SBATCH --partition=sandyb
-##SBATCH --account=kicp
+#SBATCH --partition=kicp
+#SBATCH --account=kicp
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1  
 #SBATCH --mem-per-cpu=24000
 #SBATCH --exclude=midway172
-#SBATCH --array=3-14,47-70
+#SBATCH --array=3-70
 ###SBATCH --array=3-14,19-46
 ###SBATCH --array=22,23
 cd /project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/
 
 if [ $SLURM_ARRAY_TASK_ID  -eq 3 ]
 then
+python Rate_Fitter.py 'Combined100Sims.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/SameBetaSameK100SimsCombined' 'JLDES_R0_1-7E-5_Beta_2-1_DataLikePhotZ_Contam100SimsCombined' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 0 0 2.1 >& DiagFiles/RateOutput100SimsCombinedSameBetaSameKContamNNCut.out
+fi
+
+if [ $SLURM_ARRAY_TASK_ID  -eq 4 ]
+then
 python Rate_Fitter.py 'Combined100Sims.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/SameBetaSameK100SimsCombined' 'JLDES_R0_1-7E-5_Beta_2-1_DataLikePhotZ_Contam100SimsCombined' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 1 1 2.1 >& DiagFiles/RateOutput100SimsCombinedSameBetaSameKContamNNCut_CheatTypeZ.out
 fi
 
 
-if [ $SLURM_ARRAY_TASK_ID  -eq 4 ]
-then
-python Rate_Fitter.py 'Combined100Sims.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/SameBetaSameK100SimsCombined' 'JLDES_R0_1-7E-5_Beta_2-1_DataLikePhotZ_Contam100SimsCombined' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 0 0 2.1 >& DiagFiles/RateOutput100SimsCombinedSameBetaSameKContamNNCut.out
-fi
+
 
 if [ $SLURM_ARRAY_TASK_ID  -eq 5 ]
 then

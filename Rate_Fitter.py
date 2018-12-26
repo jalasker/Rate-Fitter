@@ -29,12 +29,14 @@ class Rate_Fitter:
         self.cheatType = cheatType
         self.cheatZ = cheatZ
         self.cuts = cuts
-        
+
         self.simcat = simread.SNANA_Cat(simfilename, simName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95)
         self.simName = simName
         self.simgencat = simread.SNANA_Cat(simfilename, simName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95)
+
         SIMGEN = np.genfromtxt(simgenfilename, dtype=None, names = True, skip_footer=3, skip_header=1, invalid_raise=False)
         SIMGEN = SIMGEN[SIMGEN['GENZ'] != 'GENZ']
+
         self.simgencat.params = {'flat':True, 'H0': simH0, 'Om0':simOmegaM, 'Ob0': simOb0, 'sigma8': simSigma8, 'ns': simNs}
         self.simgencat.cosmo = Cosmology.setCosmology('simCosmo', self.simcat.params)
         self.simgencat.OrigCatalog = np.copy(SIMGEN)
@@ -47,9 +49,12 @@ class Rate_Fitter:
         print self.simgencat.NSN
         print "SIMGENCAT FILE"
         print simfilename
-        
+
         self.realName = realName
-        self.realcat = simread.SNANA_Cat(realfilename, realName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95 )
+        try:
+            self.realcat = simread.SNANA_Cat(realfilename, realName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95, skip_header = 6)
+        except:
+            self.realcat = simread.SNANA_Cat(realfilename, realName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95)
 
 
         if self.cheatType:
@@ -234,12 +239,22 @@ class Rate_Fitter:
         '''
         
        
-        nSim3, simBins3 = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins=self.binList)
-        
+        #nSim3, simBins3 = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins=self.binList)
+        nSim3, simBins3 = np.histogram(self.simcat.Catalog[ztype].astype(float), bins=self.binList)
+        #nSim3, simBins3 = np.histogram(self.simcat.Catalog['SIM_ZCMB'].astype(float), bins=self.binList)
+        #nSim4, simBins4 = np.histogram(self.simgencat.Catalog['GENZ'].astype(float), bins=self.binList)
+
 
         NCC , _ = np.histogram(self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] != 1][ztype].astype(float), bins=self.binList)
 
-        FracBad = NCC*1.0/(1.0*nSim3)
+        #NCC , _ = np.histogram(self.simgencat.Catalog[self.simgencat.Catalog['GENTYPE'] != 1]['GENZ'].astype(float), bins=self.binList)
+
+        NIa , _ = np.histogram(self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'] == 1][ztype].astype(float), bins=self.binList)
+
+        #NIa, _ = np.histogram(self.simgencat.Catalog[self.simgencat.Catalog['GENTYPE'] == 1]['GENZ'].astype(float), bins=self.binList)
+
+        #FracBad = NCC*1.0/(1.0*nSim3)
+        FracBad = NCC*1.0/(1.0*(NCC+NIa))
 
         print "Fraction of CCs in each bin"
         print FracBad
@@ -252,6 +267,9 @@ class Rate_Fitter:
 
         print "Fraction of CCs in each bin"
         print FracBad
+
+
+
 
         #### CHANGE WHEN USED WITH REAL DATA
         #bins, nSim = np.histogram(self.realcat., bins=np.linspace(self.zmin, self.zmax, self.nbins)) 
@@ -281,12 +299,42 @@ class Rate_Fitter:
         print 1.0*nData/(1.0*nSim2)
         
 
+
+
+       #TrueNCC, _ = np.histogram(self.realcat.Catalog[self.realcat.Catalog['SIM_TYPE_INDEX'] !=1][ztype].astype(float), bins=self.binList)
+
+        print "Ratio nSim/nData"
+        print 1.0*nSim2/(1.0*nData)
+
+        print "Ratio nSim2/nData"
+        print 1.0*nSim2/(1.0*nData)
+
         nCCData = nData*FracBad
+        print "FracBad"
+        print FracBad
         print 'NCCData'
         print nCCData
 
+
+        try:
+            TrueNCC, _ = np.histogram(self.realcat.Catalog[self.realcat.Catalog['SIM_TYPE_INDEX'] !=1][ztype].astype(float), bins=self.binList)
+            print "True NCC Data"
+            print TrueNCC
+            print "Ratio NCCData/TrueNCC"
+            print nCCData*1.0/(TrueNCC*1.0)
+            print "Sum of TrueNCC"
+            print np.sum(TrueNCC)
+            print "Sum of Data"
+            print np.sum(nData)
+            print "Sum of nCCData"
+            print np.sum(nCCData)
+            print "True NCC/NData"
+            print TrueNCC*1.0/(1.0*nData)
+        except:
+            print "Using real data"
+
         print "overall Contam"
-        print np.sum(NCC)*1.0/(np.sum(nSim2)*1.0)
+        print np.sum(NCC)*1.0/(np.sum(nSim3)*1.0)
         '''
         nData = nData*FracGood
 
@@ -298,7 +346,7 @@ class Rate_Fitter:
         print self.realcat.Catalog['zHD'].shape
         '''
         if self.Rate_Model == 'powerlaw':
-            def chi2func(nData, nSim, effmat, fnorm, zCenters, k, Beta, dump = False, complexdump = False, nCCData = None):
+            def chi2func(nData, nSim, effmat, fnorm, zCenters, k, Beta, dump = False, complexdump = False, nIA = None, nCC = None):
                 #zBreak = 1.0
                 Chi2Temp = 0.0
                 #f_Js = []
@@ -314,8 +362,26 @@ class Rate_Fitter:
                 f_Js = k*(1+zCenters)**Beta
                 chi2Mat = np.zeros((self.nbins))
                 adjNMC = np.zeros((self.nbins))
-                if nCCData is None:
-                    nCCData = np.zeros(nData.shape)
+
+                if (nIA is None) or (nCC is None):
+                    print "No CC Cut"
+                    fracCCData = np.zeros(nData.shape)
+                else:
+                    print "Beta Adjusted CC Cut"
+                    #BetaRatio = k*(1+zCenters)**(Beta)#/(1+zCenters)**MCBeta
+                    BetaRatio = (1+zCenters)**(Beta)#/(1+zCenters)**MCBeta
+                    fracCCData = (nCC*1.0)/(1.0*(nCC + nIA*BetaRatio))
+                    if dump:
+                        print "fracCCData2"
+                        print fracCCData
+                        print "unscaled fracCCData"
+                        print 1.0*(1.0*nCC)/(1.0*(nCC+nIA))
+
+                nCCData = nData*fracCCData
+                if dump:
+                    print "nCCData2"
+                    print nCCData
+                    
                 #print f_Js
                 #Check if I am scaling errors down with increasing MC size. Make MC twice as large as "Data" to test.
                 if dump: chi2Storage = []
@@ -421,10 +487,10 @@ class Rate_Fitter:
         #Is this right? Everything else in the other side of the chi2 function should be Ia only
         fnorm = float(np.sum(nData))/float(np.sum(nSim))
         if self.Rate_Model == 'powerlaw':
-            lamChi2 = lambda k, Beta: chi2func(nData, nSim, self.effmat, fnorm, zCenters, k, Beta, nCCData = nCCData)
-            lamChi2Dump = lambda k, Beta: chi2func(nData, nSim, self.effmat, fnorm, zCenters, k, Beta, dump = True, nCCData = nCCData)
+            lamChi2 = lambda k, Beta: chi2func(nData, nSim, self.effmat, fnorm, zCenters, k, Beta, nIA = NIa, nCC = NCC)
+            lamChi2Dump = lambda k, Beta: chi2func(nData, nSim, self.effmat, fnorm, zCenters, k, Beta, dump = True, nIA = NIa, nCC = NCC)
         elif self.Rate_Model == 'brokenpowerlaw':
-            lamChi2 = lambda k, Beta: chi2func(nData, nSim, self.effmat, fnorm, zCenters, k, Beta, 1.0, nCCData = nCCData)
+            lamChi2 = lambda k, Beta: chi2func(nData, nSim, self.effmat, fnorm, zCenters, k, Beta, 1.0, nCCData = NCCData)
             lamChi2Dump = lambda k, Beta: chi2func(nData, nSim, self.effmat, fnorm, zCenters, k, Beta, 1.0, dump = True, nCCData = nCCData)
 
         MinObj = M(lamChi2, k = 1.0, error_k = 0.1, Beta = 0.0, error_Beta = 0.1, limit_k = (0.0, None))
@@ -434,6 +500,8 @@ class Rate_Fitter:
 
         MinObj.set_strategy(2)
         fmin, param = MinObj.migrad(nsplit= 10)
+
+        lamChi2Dump(MinObj.values['k'], MinObj.values['Beta'])
 
 
         k = MinObj.values['k']
