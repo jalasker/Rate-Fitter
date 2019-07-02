@@ -14,7 +14,6 @@ import Cosmology
 #import corner
 import scipy.stats.mstats as mstats
 import scipy.stats as stats
-from scipy.interpolate import interp1d
 from sys import argv
 import glob
 import time
@@ -92,11 +91,7 @@ class Rate_Fitter:
         try:
             self.realcat = simread.SNANA_Cat(realfilename, realName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95, skip_header = 5)
         except:
-            #self.realcat = simread.SNANA_Cat(realfilename, realName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95)
-            try:
-                self.realcat = simread.SNANA_Cat(realfilename, realName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95)
-            except:
-                self.realcat = dataread.REAL_Cat(realfilename, realName, skip_header =5 )
+            self.realcat = simread.SNANA_Cat(realfilename, realName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95)
 
 
         if self.cheatType:
@@ -104,20 +99,16 @@ class Rate_Fitter:
             self.realcat.Catalog = self.realcat.Catalog[self.realcat.Catalog['SIM_TYPE_INDEX'].astype(int) == 1]
             self.simcat.Catalog = self.simcat.Catalog[self.simcat.Catalog['SIM_TYPE_INDEX'].astype(int) == 1]
 
-        print "Pre cut Catalog"
-        print self.realcat.Catalog.shape
+
         for cut in cuts:
             self.realcat.Catalog = self.realcat.Catalog[(self.realcat.Catalog[cut[0]].astype(type(cut[1])) > cut[1]) & (self.realcat.Catalog[cut[0]].astype(type(cut[2])) < cut[2])]
             self.simcat.Catalog = self.simcat.Catalog[(self.simcat.Catalog[cut[0]].astype(type(cut[1])) > cut[1]) & (self.simcat.Catalog[cut[0]].astype(type(cut[2])) < cut[2])]
-
-        print "Post cut Catalog"
-        print self.realcat.Catalog.shape
 
         
         
     def newData(self, realfilename, realName, simIndex = 100):
         self.realName = realName
-        self.shiftFlagData = False
+        self.shitFlagData = False
         try:
             self.simcat = simread.SNANA_Cat(simfilename, simName, simOmegaM=0.3, simOmegaL=0.7, simH0=70.0, simw=-1.0, simOb0=0.049, simSigma8=0.81, simNs=0.95)
         except:
@@ -128,12 +119,9 @@ class Rate_Fitter:
         if simIndex < self.nprint:
             print 'N precuts'
             print self.realcat.Catalog['FITPROB'].shape
-        print "Pre cut Catalog"
-        print self.realcat.Catalog.shape
         for cut in cuts:
             self.realcat.Catalog = self.realcat.Catalog[(self.realcat.Catalog[cut[0]].astype(type(cut[1])) > cut[1]) & (self.realcat.Catalog[cut[0]].astype(type(cut[2])) < cut[2])]
-        print "Post cut Catalog"
-        print self.realcat.Catalog.shape    
+            
         if simIndex < self.nprint:
             print "Minimum Fitprob"
             print np.min(self.realcat.Catalog['FITPROB'])
@@ -147,15 +135,15 @@ class Rate_Fitter:
         if not self.shiftFlagSim:
         
             oldsimz = self.simcat.Catalog['zPHOT']
-            oldsimtruez = self.simcat.Catalog['SIM_ZCMB']
-            stat, bins, binnum = stats.binned_statistic(oldsimz, oldsimz - oldsimtruez, bins = self.bins, statistic = 'mean')
+            oldsimtruez = self.simcat.Catalog['SIM_Z_CMB']
+            stat, bins, binnum = stats.binnedstatistic(oldsimz, oldsimz - oldsimtruez, bins = self.bins, statistic = 'mean')
             self.zBiasShifts = stat
             newsimz = oldsimz - stat[binnum]
             assert(np.sum(np.abs(newsimz - oldsimz)) > 0)
             assert((oldzshape - np.arange(0, oldz.shape[0]).shape[0])< 1)
             self.shiftFlagSim = True
         oldz = self.realcat.Catalog['zPHOT']
-        _,_, binnum = stats.binned_statistic(oldz, oldz , bins = self.bins, statistic = 'mean')
+        _,_, binnum = stats.binnedstatistic(oldz, oldz , bins = self.bins, statistic = 'mean')
         newz = oldz - self.zBiasShifts[binnum]
         oldzshape = oldz.shape[0]
         self.realcat.Catalog['zPHOT'].put(np.arange(0, oldz.shape[0]), newz)
@@ -367,7 +355,7 @@ class Rate_Fitter:
         except:
             print "Using real data"
 
-            TrueNCC = 0.0
+            TrueNCC = None
 
         nData, dataBins = np.histogram(self.realcat.Catalog[ztype].astype(float), bins=self.binList)
         if not(self.cheatCCSub):
@@ -386,16 +374,11 @@ class Rate_Fitter:
         print "PreScale Pred NCC Data if 2NCC"
         print OrigNCC*2.0/(2.0*OrigNCC+NIa)*nData
 
-        print "TrueNCC"
-        print TrueNCC
-        if type(TrueNCC) != int:
-            print "PreScale PredNCCData - TrueNCCData"
-            print OrigNCC*2.0/(2.0*OrigNCC+NIa)*nData - TrueNCC
+        print "PreScale PredNCCData - TrueNCCData"
+        print OrigNCC*2.0/(2.0*OrigNCC+NIa)*nData - TrueNCC
 
-            print "PreScale PredNCCData - TrueNCCData/ PredNCCData"
-            print (OrigNCC*2.0/(2.0*OrigNCC+NIa)*nData - TrueNCC)/(OrigNCC*2.0/(2.0*OrigNCC+NIa)*nData)
-        else:
-            print "Using real data"
+        print "PreScale PredNCCData - TrueNCCData/ PredNCCData"
+        print (OrigNCC*2.0/(2.0*OrigNCC+NIa)*nData - TrueNCC)/(OrigNCC*2.0/(2.0*OrigNCC+NIa)*nData)
         
         print "Mean of PreScale PredNCCData - TrueNCCData/ PredNCCData"
         print np.mean((OrigNCC*2.0/(2.0*OrigNCC+NIa)*nData - TrueNCC)/(OrigNCC*2.0/(2.0*OrigNCC+NIa)*nData))
@@ -504,7 +487,6 @@ class Rate_Fitter:
             
 
             if dump and (self.nprint < simInd):
-                print 'abc'
                 print "fracCCData2"
                 print fracCCData
                 print "unscaled fracCCData"
@@ -514,7 +496,6 @@ class Rate_Fitter:
                 assert(not(TrueNCCData is None))
                 nCCData = TrueNCCData
             else:
-                print 'def'
                 print "Normal CC Sub"
                 nCCData = nData*fracCCData
             if dump and (self.nprint < simInd):
@@ -523,15 +504,11 @@ class Rate_Fitter:
                 if not(TrueNCCData is None):
                     print "TrueNCCData"
                     print TrueNCCData
-            
                 
             #print f_Js
             #Check if I am scaling errors down with increasing MC size. Make MC twice as large as "Data" to test.
             if dump: chi2Storage = []
             if dump: scaledNSimStor = []
-            if dump: JSumTempNumStor = []
-            if dump: JSumTempDenStor = []
-
             if dump:
                 print "actually used NCC"
                 #print nCC
@@ -566,10 +543,7 @@ class Rate_Fitter:
                     JSumTempDen += nSimJ*f_J*eff*fnorm*f_J*fnorm
                 dataFunc = np.maximum(nDataI ,1)
                 CCFunc = np.ceil(np.maximum(nCCDataI, 1))
-                c2t = (nDataI - nCCDataI - JSumTempNum)**2/( dataFunc + CCFunc + JSumTempDen) 
-                if dump:
-                    JSumTempNumStor.append(JSumTempNum)
-                    JSumTempDenStor.append(JSumTempDen)
+                c2t = (nDataI - nCCDataI - JSumTempNum)**2/( dataFunc + CCFunc + JSumTempDen) + kprior + betaprior
 
                 if dump and (self.nprint < simInd):
                     print i
@@ -586,40 +560,19 @@ class Rate_Fitter:
                     print "Chi2Bin"
 
                     print c2t
-                    
                 if dump:
                     chi2Storage.append(c2t)
-                    
                     if c2t > 5:
                         print 'INSANITY CHECK ABOVE'
-                    
+                
                 #    Chi2Temp += ((nDataI - nCCDataI - JSumTempNum)**2/(JSumTempNum + JSumTempDen))#*fnorm**2
                 if nDataI > 1E-11 or JSumTempDen > 1E-11:
                     Chi2Temp += c2t
-                    if dump:
-                        print "JSumTempNum/Den"
-                        print JSumTempNumStor
-                        print JSumTempDenStor
-
             if dump:
-                print Chi2Temp
-                print kprior
-                print betaprior
-                print chi2Storage
-
-                
-                print "nData"
-                print nData
-                print "nCCData"
-                print nCCData
-
-                return Chi2Temp+kprior+betaprior, chi2Storage 
+                return Chi2Temp, chi2Storage
             else:
-                print Chi2Temp
-                print kprior
-                print betaprior
 
-                return Chi2Temp+kprior+betaprior
+                return Chi2Temp
         
         zCenters = (simBins[1:] + simBins[:-1])/2.0
  
@@ -765,12 +718,6 @@ def weakPrior(value, priorTuple):
 def getCCScale(simCat, dataCat, MURESWindow = (-1, 1), zbins = [0.0, 0.3, 0.6, 0.9, 1.2], muresBins = np.linspace(-2, -1, 4), Beta = None, binList = None, fracCCData = None, outfilePrefix = 'Test', Rate_Model = 'powerlaw', f_Js = None):
     import iminuit as iM
     from iminuit import Minuit as M
-    print "Check this"
-    print Rate_Model
-    print f_Js
-    print Beta
-    print fracCCData
-    print "Done Checking"
     CCScales = []
     CCScaleErrs = []
     if not(f_Js is None):
@@ -787,17 +734,7 @@ def getCCScale(simCat, dataCat, MURESWindow = (-1, 1), zbins = [0.0, 0.3, 0.6, 0
     simHistIa, simBinsIa  = np.histogram(tempSimIa['MURES'], bins = muresBins)
 
     simZHistCC, simZBinsCC = np.histogram(tempSimCC['zPHOT'], bins = binList)
-    #simZHistIa, simZBinsIa = np.histogram(tempSimIa['zPHOT'], bins = binList)
-
-    
-
-    if Rate_Model == 'discrete':
-        simZHistIa, simZBinsIa = np.histogram(tempSimIa['zPHOT'], bins = binList)
-        simHist = simZHistIa*np.array(f_Js) + simZHistCC
-    else:
-        simZHistIa, simZBinsIa = np.histogram(tempSimIa['zPHOT'], bins = binList, weights = (1 + tempSimIa['zPHOT'])**Beta)
-        #simHist = (simZHistIa*(1+binCent)**Beta) + simZHistCC
-        simHist = simZHistIa + simZHistCC
+    simZHistIa, simZBinsIa = np.histogram(tempSimIa['zPHOT'], bins = binList)
 
     binCent = (simZBinsIa[1:] + simZBinsIa[:-1])/2.0
 
@@ -807,7 +744,10 @@ def getCCScale(simCat, dataCat, MURESWindow = (-1, 1), zbins = [0.0, 0.3, 0.6, 0
     print binCent
     print simHistCC
 
-
+    if Rate_Model == 'discrete':
+        simHist = simZHistIa*np.array(f_Js) + simZHistCC
+    else:
+        simHist = (simZHistIa*(1+binCent)**Beta) + simZHistCC
     print 'num and denom of fnorm2'
     print float(dataCat.shape[0])
     print float(np.sum(simHist))
@@ -866,10 +806,8 @@ def getCCScale(simCat, dataCat, MURESWindow = (-1, 1), zbins = [0.0, 0.3, 0.6, 0
         tempSimIa = tempSim[tempSim['SIM_TYPE_INDEX'] == 1]
         histSCC, binsSCC  = np.histogram(tempSimCC['MURES'], bins = muresBins)
         if Rate_Model == 'discrete':
-            spline = interp1d(binCent, f_Js, kind = 'cubic', bounds_error = False, fill_value = (f_Js[0], f_Js[-1]))
-            #histSIa, binsSIa  = np.histogram(tempSimIa['MURES'], bins = muresBins, weights = f_Js )
-            histSIa, binsSIa  = np.histogram(tempSimIa['MURES'], bins = muresBins, weights = spline(tempSimIa['zPHOT']) )
-            #histSIa = histSIa*f_Js
+            histSIa, binsSIa  = np.histogram(tempSimIa['MURES'], bins = muresBins)
+            histSIa = histSIa*f_Js
         else:
             histSIa, binsSIa  = np.histogram(tempSimIa['MURES'], bins = muresBins, weights = (1+tempSimIa['zPHOT'])**Beta)
         #histSAllCC, binsSAllCC  = np.histogram(allSimCCZbin['MURES'], bins = muresBins)
@@ -956,8 +894,7 @@ def getCCScale(simCat, dataCat, MURESWindow = (-1, 1), zbins = [0.0, 0.3, 0.6, 0
             print "AAA"
             print (np.array(R*betaCorrAllSimIaZbin) - np.array(histSIa))/(np.array(histSCC) - np.array(R*allSimCCZbin.shape[0]))
             print "BBB"
-            #S = (np.array(R*betaCorrAllSimIaZbin) - np.array(histSIa))/(np.array(histSCC) - np.array(R*allSimCCZbin.shape[0]))
-            S = float(np.array(R*betaCorrAllSimIaZbin) - np.array(histSIa))/float(np.array(histSCC) - np.array(R*allSimCCZbin.shape[0]))
+            S = (np.array(R*betaCorrAllSimIaZbin) - np.array(histSIa))/(np.array(histSCC) - np.array(R*allSimCCZbin.shape[0]))
         except: 
             S = np.nan
 
@@ -1033,13 +970,8 @@ def getCCScale(simCat, dataCat, MURESWindow = (-1, 1), zbins = [0.0, 0.3, 0.6, 0
         CCScales.append(S)
         CCScaleErrs.append(dS[0])
 
-        print "CC PlotDebug"
-        print (simBinsCC[1:] + simBinsCC[:-1])/2.0
-        print simHistCC
-        print CCScales[0]
-        print fnorm2
-        print histD
-        print (muresBins[1:] + muresBins[:-1])/2.0
+
+
    
 
         plt.step((simBinsCC[1:] + simBinsCC[:-1])/2.0, simHistCC, c = 'b', where = 'mid',  label = 'prescaled Sim CC')
@@ -1051,21 +983,8 @@ def getCCScale(simCat, dataCat, MURESWindow = (-1, 1), zbins = [0.0, 0.3, 0.6, 0
 
 
 def applyCCScale(NCC, CCScales, datazbins = None,  zbins = None):
-    if type(CCScales) == list:
-        if len(CCScales) == 1:
 
-            NCCScaled = CCScales[0]*NCC
-        else: 
-            assert(0)
-    elif type(CCScales) == np.ndarray:
-        if CCScales.shape[0] == 1:
-            NCCScaled = CCScales[0]*NCC
-        else: 
-            assert(0)
-    elif (type(CCScales) == int) | (type(CCScales) == float):
-        NCCScaled = CCScales*NCC
-    else:
-        assert(0)
+    NCCScaled = CCScales*NCC
 
 
     return NCCScaled
@@ -1121,7 +1040,6 @@ if __name__ == '__main__':
     cheatCCSub = False
     cheatCCScale = False
     ZSysFlag = False
-    Blind = False
 
     #override file
 
@@ -1207,39 +1125,31 @@ if __name__ == '__main__':
                     CCIter = []
                     CCErrIter = []
                     RateTest.fit_rate(fixK = fixK, fixBeta = fixBeta, simIndex = simInd, trueBeta = trueBeta - 2.11, CCScale = 1.0, TrueCCScale = TrueCCScale)
-                    if Blind:
-                        BetaIter.append(RateTest.Beta+ np.cos(47392945716038.134971247))
-                    else:
-                        BetaIter.append(RateTest.Beta)
+                    BetaIter.append(RateTest.Beta)
                     BetaErrIter.append(RateTest.BetaErr)
                     for iteration in xrange(nIter):
                         CCScale, CCScaleErr =  getCCScale(RateTest.simcat.Catalog, RateTest.realcat.Catalog, MURESWindow = (ScaleMuResCutLow, ScaleMuResCutHigh), zbins = scaleZBins, muresBins = muresBins, Beta = RateTest.Beta, binList = RateTest.binList, fracCCData = RateTest.fracCCData, outfilePrefix =  dataname,Rate_Model = Rate_Model, f_Js =RateTest.fJList)
                         CCIter.append(CCScale[0])
                         CCErrIter.append(CCScaleErr[0])
                         RateTest.fit_rate(fixK = fixK, fixBeta = fixBeta, trueBeta = trueBeta - 2.11, CCScale = CCScale, TrueCCScale = TrueCCScale, BetaInit = RateTest.Beta, kInit = RateTest.k, BetaErr = RateTest.BetaErr, kErr = RateTest.kErr, f_Js =RateTest.fJList)
-                        if Blind:
-                            BetaIter.append(RateTest.Beta+ np.cos(47392945716038.134971247))
-                        else:
-                            BetaIter.append(RateTest.Beta)
+                        BetaIter.append(RateTest.Beta)
                         BetaErrIter.append(RateTest.BetaErr)
 
                     CCScale, CCScaleErr =  getCCScale(RateTest.simcat.Catalog, RateTest.realcat.Catalog, MURESWindow = (ScaleMuResCutLow, ScaleMuResCutHigh), zbins = scaleZBins, muresBins = muresBins, Beta = RateTest.Beta, binList = RateTest.binList, fracCCData = RateTest.fracCCData, outfilePrefix =  dataname,Rate_Model = Rate_Model, f_Js =RateTest.fJList)
                     CCIter.append(CCScale[0])
                     CCErrIter.append(CCScaleErr[0])
-                    
+                    print "Beta Progression"
+                    print BetaIter
+                    print "Beta Err Progressions"
+                    print BetaErrIter
                     print "CCScale Progression"
                     print CCIter
                     print "CCScale Err Progression"
                     print CCErrIter
-                    if Rate_Model != 'discrete':
-                        print "Beta Progression"
-                        print BetaIter
-                        print "Beta Err Progressions"
-                        print BetaErrIter
-                        print "Mean Betas"
-                        print np.mean(BetaIter)
-                        print "Mean CCScales"
-                        print np.mean(CCIter)
+                    print "Mean Betas"
+                    print np.mean(BetaIter)
+                    print "Mean CCScales"
+                    print np.mean(CCIter)
                     
 
                     print "AAA CC Scales"
@@ -1253,10 +1163,7 @@ if __name__ == '__main__':
 
                     ks.append(RateTest.k)
                     kErrs.append(RateTest.kErr)
-                    if Blind:
-                        Betas.append(RateTest.Beta+ np.cos(47392945716038.134971247))
-                    else:
-                        Betas.append(RateTest.Beta)
+                    Betas.append(RateTest.Beta)
                     BetaErrs.append(RateTest.BetaErr)
                     Chi2s.append(RateTest.chi2)
                     print "CCScale Storage Iter {0}".format(simInd)
@@ -1294,27 +1201,17 @@ if __name__ == '__main__':
                     RateTest.effCalc(nbins = nbins, fracContamCut = fcc)
                     #RateTest.effCalc(nbins = 20)
                     BetaIter = []
-                    BetaErrIter = []
                     CCIter = []
-                    CCErrIter = []
                     RateTest.fit_rate(fixK = fixK, fixBeta = fixBeta, simIndex = simInd, trueBeta = trueBeta - 2.11, CCScale = 1.0, TrueCCScale = TrueCCScale)
-                    if Blind:
-                        BetaIter.append(RateTest.Beta+ np.cos(47392945716038.134971247))
-                    else:
-                        BetaIter.append(RateTest.Beta)
+                    BetaIter.append(RateTest.Beta)
                     BetaErrIter.append(RateTest.BetaErr)
                     for iteration in xrange(nIter):
-                        print "interation Number"
-                        print iteration
                         CCScale, CCScaleErr =  getCCScale(RateTest.simcat.Catalog, RateTest.realcat.Catalog, MURESWindow = (ScaleMuResCutLow, ScaleMuResCutHigh), zbins = scaleZBins, muresBins = muresBins, Beta = RateTest.Beta, binList = RateTest.binList, fracCCData = RateTest.fracCCData, outfilePrefix =  dataname, Rate_Model = Rate_Model, f_Js =RateTest.fJList)
                         CCIter.append(CCScale[0])
                         CCErrIter.append(CCScaleErr[0])
 
                         RateTest.fit_rate(fixK = fixK, fixBeta = fixBeta, trueBeta = trueBeta - 2.11, CCScale = CCScale, TrueCCScale = TrueCCScale, BetaInit = RateTest.Beta, kInit = RateTest.k, BetaErr = RateTest.BetaErr, kErr = RateTest.kErr)
-                        if Blind:
-                            BetaIter.append(RateTest.Beta+ np.cos(47392945716038.134971247))
-                        else:
-                            BetaIter.append(RateTest.Beta)
+                        BetaIter.append(RateTest.Beta)
                         BetaErrIter.append(RateTest.BetaErr)
 
                     CCScale, CCScaleErr =  getCCScale(RateTest.simcat.Catalog, RateTest.realcat.Catalog, MURESWindow = (ScaleMuResCutLow, ScaleMuResCutHigh), zbins = scaleZBins, muresBins = muresBins, Beta = RateTest.Beta, binList = RateTest.binList, fracCCData = RateTest.fracCCData, outfilePrefix =  dataname, Rate_Model = Rate_Model, f_Js =RateTest.fJList)
@@ -1365,10 +1262,7 @@ if __name__ == '__main__':
 
                     ks.append(RateTest.k)
                     kErrs.append(RateTest.kErr)
-                    if Blind:
-                        Betas.append(RateTest.Beta+ np.cos(47392945716038.134971247))
-                    else:
-                        Betas.append(RateTest.Beta)
+                    Betas.append(RateTest.Beta)
                     BetaErrs.append(RateTest.BetaErr)
                     Chi2s.append(RateTest.chi2)
                     print "CCScale Storage Iter {0}".format(simInd)
@@ -1383,8 +1277,7 @@ if __name__ == '__main__':
                     print e
                     traceback.print_exc()
                     nFail +=1
-        if Blind:
-            Betas = np.array(Betas) + np.cos(47392945716038.134971247)
+
         print "Number of Failures"
         print nFail
         print "mean k"
@@ -1494,8 +1387,6 @@ print "BetaMeans"
 print BetaMean
 print "BetaSigmas"
 print BetaSigma
-print "BetaErrs"
-print BetaErr
 print "Chi2Means"
 print Chi2Mean
 print "Chi2Sigma"

@@ -2,16 +2,18 @@
 #SBATCH --job-name=RateFitter
 #SBATCH --output=DiagFiles/RateFitter%a.out
 #SBATCH --error=DiagFiles/RateFitter%a.out
-#SBATCH --time=00:10:00
-#SBATCH --partition=debug
-##SBATCH --account=kicp
+#SBATCH --time=00:60:00
+#SBATCH --partition=broadwl
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1  
-#SBATCH --mem-per-cpu=8000
-##SBATCH --exclude=midway172
-#SBATCH --array=71-85
-###SBATCH --array=3-14,19-46
-###SBATCH --array=22,23
+###SBATCH --qos debug
+#SBATCH --mem-per-cpu=16000
+#SBATCH --array=21,71
+
+### 21 for same beta, same k, same contam
+### 71 for '' '', 2x contam
+###
+
 cd /project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/
 
 if [ $SLURM_ARRAY_TASK_ID  -eq 2 ]
@@ -528,4 +530,48 @@ then
 python -u  Rate_Fitter.py 'Combined100SimsBeta16_2Contam.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/Beta26SameK100SimsCombined_2Contam' 'JLDES_R0_1-7E-5_Beta_1-6_DataLikePhotZ_2Contam100SimsCombined' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 0 0 1.61 GlobalParams.txt StandardCuts.txt  >& DiagFiles/RateOutput100SimsCombinedBeta16SameK2ContamNNCut.out
 fi
 
+
+if [ $SLURM_ARRAY_TASK_ID  -eq 86 ]
+then
+python -u  Rate_Fitter.py '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datasize_2Contam_Beta203/JLDES_R0_1-7E-5_Beta_2-03_Datasize_2Contam-00{0:02d}/FITOPT000+SALT2mu.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/Beta203SameK2Contam100Sims' 'JLDES_R0_1-7E-5_Beta_2-1_DataLikePhotZ_Contam' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 0 0 2.03 GlobalParams.txt StandardCuts.txt  >& DiagFiles/RateOutput100SimsBeta203SameK2ContamNNCut.out
+fi
+
+if [ $SLURM_ARRAY_TASK_ID  -eq 87 ]
+then
+python -u  Rate_Fitter.py '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datasize_2Contam_Beta207/JLDES_R0_1-7E-5_Beta_2-07_Datasize_2Contam-00{0:02d}/FITOPT000+SALT2mu.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/Beta207SameK2Contam100Sims' 'JLDES_R0_1-7E-5_Beta_2-1_DataLikePhotZ_Contam' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 0 0 2.07 GlobalParams.txt StandardCuts.txt  >& DiagFiles/RateOutput100SimsBeta207SameK2ContamNNCut.out
+fi
+
+if [ $SLURM_ARRAY_TASK_ID  -eq 88 ]
+then
+python -u  Rate_Fitter.py '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datasize_2Contam_Beta215/JLDES_R0_1-7E-5_Beta_2-15_Datasize_2Contam-00{0:02d}/FITOPT000+SALT2mu.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/Beta215SameK2Contam100Sims' 'JLDES_R0_1-7E-5_Beta_2-1_DataLikePhotZ_Contam' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 0 0 2.15 GlobalParams.txt StandardCuts.txt  >& DiagFiles/RateOutput100SimsBeta215SameK2ContamNNCut.out
+fi
+
+if [ $SLURM_ARRAY_TASK_ID  -eq 89 ]
+then
+python -u  Rate_Fitter.py '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datasize_2Contam_Beta219/JLDES_R0_1-7E-5_Beta_2-19_Datasize_2Contam-00{0:02d}/FITOPT000+SALT2mu.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/Beta219SameK2Contam100Sims' 'JLDES_R0_1-7E-5_Beta_2-1_DataLikePhotZ_Contam' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 0 0 2.19 GlobalParams.txt StandardCuts.txt  >& DiagFiles/RateOutput100SimsBeta219SameK2ContamNNCut.out
+fi
+
+
+if [ $SLURM_ARRAY_TASK_ID  -eq 90 ]
+then
+python -u  Rate_Fitter.py '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datasize_2Contam_Beta22/JLDES_R0_1-7E-5_Beta_2-2_Datasize_2Contam-00{0:02d}/FITOPT000+SALT2mu.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/Beta22SameK2Contam100Sims' 'JLDES_R0_1-7E-5_Beta_2-1_DataLikePhotZ_Contam' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 0 0 2.21 GlobalParams.txt StandardCuts.txt  >& DiagFiles/RateOutput100SimsBeta22SameK2ContamNNCut.out
+fi
+
+
+if [ $SLURM_ARRAY_TASK_ID  -eq 91 ]
+then
+python -u  Rate_Fitter.py '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datasize_2Contam_Beta23/JLDES_R0_1-7E-5_Beta_2-3_Datasize_2Contam-00{0:02d}/FITOPT000+SALT2mu.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/Beta23SameK2Contam100Sims' 'JLDES_R0_1-7E-5_Beta_2-1_DataLikePhotZ_Contam' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 0 0 2.31 GlobalParams.txt StandardCuts.txt  >& DiagFiles/RateOutput100SimsBeta23SameK2ContamNNCut.out
+fi
+
+
+if [ $SLURM_ARRAY_TASK_ID  -eq 92 ]
+then
+python -u  Rate_Fitter.py '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datasize_2Contam_Beta218/JLDES_R0_1-7E-5_Beta_1-8_Datasize_2Contam-00{0:02d}/FITOPT000+SALT2mu.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/Beta18SameK2Contam100Sims' 'JLDES_R0_1-7E-5_Beta_2-1_DataLikePhotZ_Contam' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 0 0 1.81 GlobalParams.txt StandardCuts.txt  >& DiagFiles/RateOutput100SimsBeta18SameK2ContamNNCut.out
+fi
+
+
+if [ $SLURM_ARRAY_TASK_ID  -eq 93 ]
+then
+python -u  Rate_Fitter.py '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datasize_2Contam_Beta19/JLDES_R0_1-7E-5_Beta_1-9_Datasize_2Contam-00{0:02d}/FITOPT000+SALT2mu.fitres' '/project/rkessler/SURVEYS/DES/USERS/jlasker/Rate_Analysis/outFit_datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/FITOPT000+SALT2mu.fitres' 'DiagFiles/Beta19SameK2Contam100Sims' 'JLDES_R0_1-7E-5_Beta_2-1_DataLikePhotZ_Contam' '/scratch/midway2/rkessler/SNDATA_ROOT/SIM/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam/JLDES_R0_1-7E-5_Beta_2-1_Datalike_Contam.DUMP' 0 0 1.91 GlobalParams.txt StandardCuts.txt  >& DiagFiles/RateOutput100SimsBeta19SameK2ContamNNCut.out
+fi
 
