@@ -8,7 +8,7 @@ import scipy.stats as stats
 import numpy as np
 import matplotlib.pyplot as plt
 plt.switch_backend('Agg')
-import Cosmology
+#import Cosmology
 import scipy.stats.mstats as mstats
 import scipy.stats as stats
 from scipy.interpolate import UnivariateSpline
@@ -112,7 +112,7 @@ class Rate_Fitter:
         SIMGEN = SIMGEN[SIMGEN['GENZ'] != 'GENZ']
 
         self.simgencat.params = {'flat':True, 'H0': simH0, 'Om0':simOmegaM, 'Ob0': simOb0, 'sigma8': simSigma8, 'ns': simNs}
-        self.simgencat.cosmo = Cosmology.setCosmology('simCosmo', self.simcat.params)
+        #self.simgencat.cosmo = Cosmology.setCosmology('simCosmo', self.simcat.params)
         self.simgencat.OrigCatalog = np.copy(SIMGEN)
         self.simgencat.Catalog = np.copy(SIMGEN)
         self.simgencat.Catalog = self.simgencat.Catalog[self.simgencat.Catalog['GENZ'] != 'GENZ']
@@ -412,7 +412,7 @@ class Rate_Fitter:
 
 
         extent = [zPhotEdges[0], zPhotEdges[-1], zTrueEdges[0], zTrueEdges[-1]]
-        if simInd == 1:
+        if (simInd == 0) or (not ('sim' in self.realName.lower())):
             plt.figure()
             plt.imshow(np.flipud(counts.T), extent = extent, cmap = 'Blues')
             plt.colorbar()
@@ -612,11 +612,12 @@ class Rate_Fitter:
             print np.sum(NCC)*1.0/(np.sum(nSim3)*1.0)
         
         def chi2func(nData, nSim, effmat, fnorm, zCentersSamp, zCentersFit, k = 1.0, Beta = 0.0, zBreak = 1.0, dump = False, complexdump = False, modelError = False, nIA = None, nCC = None, Rate_Model = 'powerlaw', zbins = None, simInd = 100, BetaPrior = (-3, 3), KPrior = (0.0, 50.0), priorRate = None, priorZEff = None, ratePriorErrUp = None, ratePriorErrDown =None, ratePriorErrAll = None,  TrueNCCData = None, f_1 = 1.0, f_2 = 1.0, f_3 = 1.0, f_4 = 1.0, f_5 = 1.0, f_6 = 1.0, f_7 = 1.0, f_8 = 1.0, f_9 = 1.0, f_10 = 1.0, f_11 = 1.0):
-            print "PRIORS2"
-            print priorRate
-            print priorZEff
-            print ratePriorErrUp
-            print ratePriorErrDown
+            if simInd < self.nprint:
+                print "PRIORS2"
+                print priorRate
+                print priorZEff
+                print ratePriorErrUp
+                print ratePriorErrDown
             Chi2Temp = 0.0
             if Rate_Model == 'powerlaw':
                 f_Js = k*(1+zCentersSamp)**Beta
@@ -637,7 +638,7 @@ class Rate_Fitter:
                 f_Js = np.array(f_Js)
             else: 
                 assert(0)
-            if simInd >  self.nprint:
+            if simInd <  self.nprint:
                 if Rate_Model == 'discrete':
                     print "f_Js init"
                     print f_Js
@@ -655,20 +656,21 @@ class Rate_Fitter:
                 kprior  = weakPrior(k, KPrior)
                 betaprior = weakPrior(Beta, BetaPrior)
 
-            if dump and (self.nprint < simInd):
+            if dump and (self.nprint > simInd):
                 print "kprior"
                 print kprior
                 print "betaprior"
                 print betaprior
             if (nIA is None) or (nCC is None):
-                print "No CC Cut"
+                if dump:
+                    print "No CC Cut"
                 fracCCData = np.zeros(nData.shape)
             elif self.cheatCCSub:
                 fracCCData = TrueNCC*1.0/nData 
 
             else:
                 if Rate_Model == 'discrete':
-                    if dump:
+                    if dump and (self.nprint > simInd):
                         print 'f_J adjusted CC Cut'
                         print Rate_Model
                         print nCC
@@ -677,12 +679,12 @@ class Rate_Fitter:
                     fracCCData = (nCC*1.0)/((1.0*nCC + nIA*np.array(f_Js)))
                     print fracCCData
                 else:
-                    if dump:
+                    if dump and (self.nprint > simInd):
                         print "Beta Adjusted CC Cut"
                         print Rate_Model
                     #BetaRatio = k*(1+zCenters)**(Beta)#/(1+zCenters)**MCBeta
                     BetaRatio = (1+zCentersFit)**(Beta)#/(1+zCenters)**MCBeta
-                    if dump:
+                    if dump and (self.nprint > simInd):
                         print "Beta Ratio"
                         print BetaRatio
                         print "BadFracCCData"
@@ -711,7 +713,7 @@ class Rate_Fitter:
                 print "Normal CC Sub"
             if not self.cheatCCSub:
                 nCCData = nData*fracCCData
-            if dump and (self.nprint < simInd):
+            if dump and (self.nprint > simInd):
                 print "nCCData2"
                 print nCCData
                 if not(TrueNCCData is None):
@@ -730,7 +732,7 @@ class Rate_Fitter:
                 print "actually used NCC"
                 #print nCC
                 print nCCData
-            if simInd < self.nprint:
+            if dump and (simInd < self.nprint):
                 print "effmat"
                 print effmat
                 print "nData"
@@ -742,7 +744,7 @@ class Rate_Fitter:
 
             print nCCData
             for row, nDataI, nCCDataI, i, zc in zip(effmat, nData, nCCData, range(self.nbinsFit), zCentersFit):
-                if dump and (self.nprint < simInd):
+                if dump and (self.nprint > simInd):
                     print 'effmat row'
                     print row
                     print 'nDataI'
@@ -753,14 +755,14 @@ class Rate_Fitter:
                 
                 JSumTempNum = 0.0
                 JSumTempDen = 0.0
-                if simInd < self.nprint:
+                if dump and (simInd < self.nprint):
                     print "nBinsSamp"
                     print self.nbinsSamp
                 assert(row.shape[0] == self.nbinsSamp)
                 assert(nSim.shape[0] == self.nbinsSamp)
                 assert(len(f_Js) == self.nbinsSamp)
                 for eff, nSimJ, f_J, j in zip(row, nSim, f_Js, range(self.nbinsSamp)):
-                    if dump  and (self.nprint < simInd):
+                    if dump  and (self.nprint > simInd):
                         print 'NGen J'
                         print nSimJ
                         print 'JSumTempNum contr'
@@ -782,7 +784,7 @@ class Rate_Fitter:
                     JSumTempNumStor.append(JSumTempNum)
                     JSumTempDenStor.append(JSumTempDen)
 
-                if dump and (self.nprint < simInd):
+                if dump and (self.nprint > simInd):
                     print i
                     print 'nDataI'
                     print nDataI
@@ -807,13 +809,13 @@ class Rate_Fitter:
                 #    Chi2Temp += ((nDataI - nCCDataI - JSumTempNum)**2/(JSumTempNum + JSumTempDen))#*fnorm**2
                 if nDataI > 1E-11 or JSumTempDen > 1E-11:
                     Chi2Temp += c2t
-            if dump and (self.nprint < simInd):
+            if dump and (self.nprint > simInd):
                 print "JSumTempNum/Den"
                 print JSumTempNumStor
                 print JSumTempDenStor
 
             if dump:
-                if (self.nprint < simInd):
+                if (self.nprint >simInd):
                     print Chi2Temp
                     print kprior
                     print betaprior
@@ -842,7 +844,7 @@ class Rate_Fitter:
 
                     return Chi2Temp+kprior+betaprior + ratePrior(k*self.MCK, Beta+self.MCBeta, priorRate, priorZEff, ratePriorErrUp, ratePriorErrDown, ratePriorErrAll), chi2Storage 
             else:
-                if dump and (self.nprint < simInd):
+                if dump and (self.nprint > simInd):
                     print 'C2T'
                     print Chi2Temp
                     print kprior
@@ -874,7 +876,7 @@ class Rate_Fitter:
             self.fracCCData = TrueNCC*1.0/nData
         else:
             self.fracCCData = (NCC*1.0)/(1.0*(NCC + NIa))
-        if (self.nprint < simInd):
+        if (self.nprint > simInd):
             print "nSim"
             print nSim
             print 'fracCCData'
@@ -953,7 +955,7 @@ class Rate_Fitter:
         #plt.ylabel('chi2 in bin')
         #plt.savefig(self.realName + 'Chi2VsnData.png')
         #plt.clf()
-        if self.nprint < simInd:
+        if self.nprint > simInd:
             print "Shapes of things"
             print len(c2stor)
             print nData.shape
@@ -1001,9 +1003,24 @@ class Rate_Fitter:
             #/(self.nbins - 2)
             self.BetaRatio = (1+zCentersFit)**(Beta)
             self.fJList = None
+
+            print 'SCALE DEBUG'
+            print NCC
+            print NIa
+            print self.BetaRatio
+            print 'SCALE DEBUG2'
+            print np.sum(NCC)
+            print np.sum(NIa)
+            print np.sum(NIa*self.BetaRatio)
             self.fracCCData = (NCC*1.0)/(1.0*(1.0*NCC + NIa*self.BetaRatio))
             self.fracCCDataTot = (np.sum(NCC)*1.0)/(1.0*(1.0*np.sum(NCC) + np.sum(NIa*self.BetaRatio)))
-
+            print 'SCALE DEBUG3'
+            print self.fracCCData
+            print self.fracCCDataTot
+            print 'SCALE DEBUG4'
+            print OrigNCC
+            print np.sum(OrigNCC)
+            print CCScale
 
             #print self.fracCCDataTot
             #print type(self.fracCCDataTot)
@@ -1011,6 +1028,7 @@ class Rate_Fitter:
             print "Chi2 final = {0}".format(round(lamChi2Dump(self.k, self.Beta)[0], 4))
         self.chi2 = fmin.fval
         print "Chi2final? = {0}".format(round(fmin.fval, 4))
+
 
 
         if not(self.priorRate is None):
@@ -1023,7 +1041,7 @@ class Rate_Fitter:
             print c2NoPrior
 
         #fJs = np.ones(zCenters.shape)
-        
+        '''
         try:
             if (Rate_Model != 'discrete'):
                 plt.clf()
@@ -1217,7 +1235,7 @@ class Rate_Fitter:
         #plt.axhline(y = self.MCBeta, c = 'k', label = 'True Beta')
         #plt.axhline(y = Beta + self.MCBeta, c = 'g', label= 'Best Fit Beta')
         #plt.axvline(x = k, label = 'Best Fit k')
-        
+    '''        
     '''
     def chi2V2(self, fJs, fJErrs, zCenters, k, Beta):
             fitfJs = k*(1+zCenters)**Beta
@@ -1701,8 +1719,12 @@ if __name__ == '__main__':
         #    subprocess.call(['python', 'constructChi2Func.py', str(nbins)], shell = False)
         #print "MPI Fucked"
         if '{' in datadir:
-            #nfile = 100
-            nfile = 48
+            if os.path.exists(datadir.format(98)):
+                print "MOAR SIMS"
+                nfile = 101
+            else:
+                print "FEWAR SIMS"
+                nfile = 49
         else:
             nfile = 2
         for simInd in range(1,nfile):
@@ -2097,25 +2119,32 @@ if __name__ == '__main__':
         
 
         
-        if simInd == 1:
-            bins0 = [0.0, 1.0, 3.0, 6.0, 9.0, 11.0, 14.0, 18.0, 25.0]
-            hist, bins = np.histogram(Chi2s, bins = bins0)
-            xs = (bins[1:] + bins[:-1])/2.0
-            plt.bar(xs, hist, width = bins[1:] - bins[:-1])
+        #if simInd == 1:
+        print "Indiv Chi2s"
+        print Chi2s
+        bins0 = np.linspace(1.0, 20.0, 10)
+        hist, bins = np.histogram(Chi2s, bins = bins0)
+        xs = (bins[1:] + bins[:-1])/2.0
+        plt.bar(xs, hist, width = bins[1:] - bins[:-1])
 
-            chi2s = scipy.stats.chi2.pdf(xs, 11)
+        print "Chi2 Hist"
+        print bins
+        print hist
 
-            norm = np.max(hist)*1.0/np.max(chi2s)
+        chi2s = scipy.stats.chi2.pdf(xs, nbinsFit - 2)
 
-            plt.plot(xs, scipy.stats.chi2.pdf(xs, 11)*norm, color = 'g')
-            if cheatType and not cheatZ:
-                plt.savefig(dataname +'Chi2Plot_CheatType.png')
-            elif cheatZ and not cheatType:
-                plt.savefig(dataname  +'Chi2Plot_CheatZ.png')
-            elif cheatZ and cheatType:
-                plt.savefig(dataname +'Chi2Plot_CheatTypeZ.png')
-            else:
-                plt.savefig(dataname +'Chi2Plot.png')
+        norm = np.max(hist)*1.0/np.max(chi2s)
+
+
+        plt.plot(xs, chi2s*norm, color = 'g')
+        if cheatType and not cheatZ:
+            plt.savefig(dataname +'Chi2Plot_CheatType.png')
+        elif cheatZ and not cheatType:
+            plt.savefig(dataname  +'Chi2Plot_CheatZ.png')
+        elif cheatZ and cheatType:
+            plt.savefig(dataname +'Chi2Plot_CheatTypeZ.png')
+        else:
+            plt.savefig(dataname +'Chi2Plot.png')
 
         if not noCCMC:
             print "AAA CC Scale means (weighted, unweighted)"
